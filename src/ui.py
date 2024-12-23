@@ -10,11 +10,11 @@ except ImportError:
     from PySide2 import QtWidgets, QtCore, QtGui
     from shiboken2 import wrapInstance, getCppPointer
 
-from importlib import reload
-reload(pose_inbetween)
+# from importlib import reload
+# reload(pose_inbetween)
 
 
-TOOL_NAME = "Pose Inbetween"
+TOOL_NAME = "In-betweener"
 
 class PoseInbetween(QtWidgets.QWidget):
     SLIDER_RESOLUTION = 1000
@@ -23,13 +23,17 @@ class PoseInbetween(QtWidgets.QWidget):
         super().__init__(parent)
 
         self.initUI()
+
         self.editing = False
+
+        self.models = set()
+        self.next_pose = None
+        self.prev_pose = None
+        self.current_pose = None
 
     def initUI(self):
         self.setWindowTitle("Pose Inbetween")
         self.setGeometry(100, 100, 300, 150)
-        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.FramelessWindowHint)
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
         layout = QtWidgets.QHBoxLayout()
 
         button_layout = QtWidgets.QHBoxLayout()
@@ -49,8 +53,8 @@ class PoseInbetween(QtWidgets.QWidget):
 
         slider_layout = QtWidgets.QHBoxLayout()
         self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider.setMinimum(-1.5 * self.SLIDER_RESOLUTION)
-        self.slider.setMaximum(1.5 * self.SLIDER_RESOLUTION)
+        self.slider.setMinimum(int(-1.5 * self.SLIDER_RESOLUTION))
+        self.slider.setMaximum(int(1.5 * self.SLIDER_RESOLUTION))
         self.slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
         self.slider.setTickInterval(250)
 
@@ -96,6 +100,9 @@ class PoseInbetween(QtWidgets.QWidget):
             other_pose = self.prev_pose
             ratio = -ratio
 
+        if self.current_pose is None or other_pose is None:
+            return
+
         pose_inbetween.apply_inbetween_pose(self.models, 
                                             self.current_pose, 
                                             other_pose, 
@@ -123,22 +130,9 @@ class PoseInbetween(QtWidgets.QWidget):
 
 
 class NativeWidgetHolder(fb.FBWidgetHolder):
-    def WidgetCreate(self, pWidgetParent: int):
-        self.mNativeQtWidget = PoseInbetween(wrapInstance(pWidgetParent, QtWidgets.QWidget))
-        # dockWidget = self.mNativeQtWidget.parent().parent().parent()
-
-        # dockWidget.setWindowFlags(dockWidget.windowFlags() | QtCore.Qt.FramelessWindowHint)
-        # parent.parent().setWindowFlags(QtCore.Qt.FramelessWindowHint)
-        # self.mNativeQtWidget.setAttribute(QtCore.Qt.WA_TranslucentBackground)
-        # self.mNativeQtWidget.parent().setAttribute(QtCore.Qt.WA_TranslucentBackground)
-        # self.mNativeQtWidget.parent().parent().setAttribute(QtCore.Qt.WA_TranslucentBackground)
-
-        # for child in dockWidget.children():
-        #     if isinstance(child, QtWidgets.QWidget):
-        #         # delete the close button
-
-
-        return getCppPointer(self.mNativeQtWidget)[0]
+    def WidgetCreate(self, parent_cpp_ptr: int):
+        self.native_widget = PoseInbetween(wrapInstance(parent_cpp_ptr, QtWidgets.QWidget))
+        return getCppPointer(self.native_widget)[0]
 
 
 class NativeQtWidgetTool(fb.FBTool):
