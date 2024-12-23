@@ -1,26 +1,58 @@
+from __future__ import annotations
+
 """
 In-between poses
 """
 
-#pylint: disable=all
+import types
+import typing
+import dataclasses
 
 import pyfbsdk as fb
-import pyfbsdk_additions as fb_additions
-
-from PySide6 import QtWidgets, QtCore, QtGui
-from shiboken6 import wrapInstance, getCppPointer
 
 
-TOOL_NAME = "Inbetweener"
+PoseT = dict[fb.FBModel, "ModelTransform"]
+VectorT = typing.TypeVar("VectorT", fb.FBVector3d, fb.FBVector4d, fb.FBSVector)
+
+@dataclasses.dataclass
+class ModelTransform:
+    translation: fb.FBVector3d
+    rotation: fb.FBVector3d
+    quaternion: fb.FBVector4d
+    scaling: fb.FBVector3d
+
 
 class change_all_models_ctx:
+    """ Context manager to use when changing multiple models in the scene. """
     def __enter__(self):
         fb.FBBeginChangeAllModels()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         fb.FBEndChangeAllModels()
 
-def get_models() -> fb.FBModelList:
+
+class set_time_ctx:
+    """ Context manager to set the time in the scene. """
+    def __init__(self, time: fb.FBTime, eval: bool = False) -> types.NoneType:
+        self.time = time
+        self.bEval = eval
+
+        self.current_time = fb.FBSystem().LocalTime
+
+    def __enter__(self):
+        fb.FBPlayerControl().Goto(self.time)
+        if self.bEval:
+            fb.FBSystem().Scene.Evaluate()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        fb.FBPlayerControl().Goto(self.current_time)
+
+
+def lerp(a: VectorT, b: VectorT, t: float, /) -> VectorT:
+    return a + (b - a) * t
+
+
+def get_models() -> set[fb.FBModel]:
     """
     Get the selected objects in the scene
     """
@@ -29,7 +61,7 @@ def get_models() -> fb.FBModelList:
 
     selected_models = set(selected_models)
 
-    keying_mode = fb.FBApplication().CurrentCharacter.KeyingMode
+    keying_mode = fb.FBGetCharactersKeyingMode()
 
     if keying_mode != fb.FBCharacterKeyingMode.kFBCharacterKeyingSelection:
         groups = set()
@@ -42,8 +74,7 @@ def get_models() -> fb.FBModelList:
                         groups.add(parent_keying_group)
                     else:
                         for j in range(parent_keying_group.GetParentKeyingGroupCount()):
-                            grand_parent_keying_group = parent_keying_group.GetParentKeyingGroup(j)
-                            groups.add(grand_parent_keying_group)
+                            groups.add(parent_keying_group.GetParentKeyingGroup(j))
 
         def _get_models_from_group(keying_group: fb.FBKeyingGroup):
             for i in range(keying_group.GetSubKeyingGroupCount()):
@@ -62,232 +93,90 @@ def get_models() -> fb.FBModelList:
     return selected_models
 
 
-def get_keyframe_time(models: fb.FBModelList):
+def get_closest_keyframes(models: typing.Iterable[fb.FBModel]) -> tuple[fb.FBTime, fb.FBTime]:
     """
-    Get the previous keyframe time of the model
+    Get the time of the closest keyframes to the current time.
     """
-    time_prev = fb.FBSystem().CurrentTake.LocalTimeSpan.GetStart()
-    time_next = fb.FBSystem().CurrentTake.LocalTimeSpan.GetStop()
-    current_time = fb.FBSystem().LocalTime
+    system = fb.FBSystem()
+    current_time = system.LocalTime
+
+    time_previous = system.CurrentTake.LocalTimeSpan.GetStart()
+    time_next = system.CurrentTake.LocalTimeSpan.GetStop()
+
     for model in models:
         for prop in model.PropertyList:
             if isinstance(prop, fb.FBPropertyAnimatable) and prop.IsAnimated():
                 for node in prop.GetAnimationNode().Nodes:
                     for key in node.FCurve.Keys:
-                        if key.Time < current_time and key.Time > time_prev:
-                            time_prev = key.Time
+                        if key.Time < current_time and key.Time > time_previous:
+                            time_previous = key.Time
 
                         if key.Time > current_time and key.Time < time_next:
                             time_next = key.Time
 
-    return time_prev, time_next
+    return time_previous, time_next
 
 
-def get_transformation_at_times(models: fb.FBModelList, prev_pose_time: fb.FBTime, next_pose_time: fb.FBTime):
+def get_pose(models: typing.Iterable[fb.FBModel]) -> PoseT:
     """
-    Get the transformation of the model at the previous keyframe
+    Get the translation, rotation and scaling of the models
     """
-    current_time = fb.FBSystem().LocalTime
-
-    # set time to previous keyframe
-    fb.FBPlayerControl().Goto(prev_pose_time)
-    fb.FBSystem().Scene.Evaluate()
-
-    # key: model, value: translation, rotation, scaling 
-    prev_pose = {}
-    next_pose = {}
+    pose: PoseT = {}
 
     for model in models:
-        # Get the transformation matrix
-        Matrix = fb.FBMatrix()
+        matrix = fb.FBMatrix()
 
-        Translation = fb.FBVector4d()
-        Scaling = fb.FBSVector()
+        translation_4d = fb.FBVector4d()
+        scaling = fb.FBSVector()
 
-        model.GetLocalTransformationMatrixWithGlobalRotationDoF(Matrix)
+        model.GetLocalTransformationMatrixWithGlobalRotationDoF(matrix)
 
-        if model.QuaternionInterpolate:
-            Rotation = fb.FBVector4d()
-            fb.FBMatrixToTQS(Translation, Rotation, Scaling, Matrix)
-        else:
-            Rotation = fb.FBVector3d()
-            fb.FBMatrixToTRS(Translation, Rotation, Scaling, Matrix)
+        rotation = fb.FBVector3d()
+        fb.FBMatrixToTRS(translation_4d, rotation, scaling, matrix)
 
+        quaternion = fb.FBVector4d()
+        fb.FBRotationToQuaternion(quaternion, rotation)
 
-        prev_pose[model] = (Translation, Rotation, Scaling)
+        translation = fb.FBVector3d(translation_4d[0], translation_4d[1], translation_4d[2])
 
-    # set time to next keyframe
-    fb.FBPlayerControl().Goto(next_pose_time)
-    fb.FBSystem().Scene.Evaluate()
+        pose[model] = ModelTransform(translation, rotation, quaternion, fb.FBVector3d(*scaling))
 
-    for model in models:
-        # Get the transformation matrix
-        Matrix = fb.FBMatrix()
-
-        Translation = fb.FBVector4d()
-        Scaling = fb.FBSVector()
-
-        model.GetLocalTransformationMatrixWithGlobalRotationDoF(Matrix)
-        if model.QuaternionInterpolate:
-            Rotation = fb.FBVector4d()
-            fb.FBMatrixToTQS(Translation, Rotation, Scaling, Matrix)
-        else:
-            Rotation = fb.FBVector3d()
-            fb.FBMatrixToTRS(Translation, Rotation, Scaling, Matrix)
-
-        next_pose[model] = (Translation, Rotation, Scaling)
-
-    # set time back to current time
-    fb.FBPlayerControl().Goto(current_time)
-
-    return prev_pose, next_pose
+    return pose
 
 
-# UI
+def apply_inbetween_pose(models: typing.Iterable[fb.FBModel], pose_a: PoseT, pose_b: PoseT, ratio: float, *, use_translation: bool = True, use_rotation: bool = True, use_scaling: bool = True) -> None:
+    with change_all_models_ctx():
+        for model in models:
+            model_trs_prev = pose_a[model]
+            model_trs_next = pose_b[model]
 
-class PoseInbetween(QtWidgets.QWidget):
-    def __init__(self, parent: QtWidgets.QWidget):
-        super(PoseInbetween, self).__init__(parent)
+            if use_translation:
+                translation = lerp(model_trs_prev.translation, model_trs_next.translation, ratio)
+                model.SetVector(translation, fb.FBModelTransformationType.kModelTranslation, False)
 
-        self.initUI()
-
-        self.models = get_models()
-        prev_pose_time, next_pose_time = get_keyframe_time(self.models)
-        self.prev_pose, self.next_pose = get_transformation_at_times(self.models, prev_pose_time, next_pose_time)
-
-    def initUI(self):
-        self.setWindowTitle("Pose Inbetween")
-        self.setGeometry(100, 100, 300, 150)
-        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.FramelessWindowHint)
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
-        layout = QtWidgets.QHBoxLayout()
-
-        button_layout = QtWidgets.QHBoxLayout()
-        button_layout.setSpacing(2)
-        self.translation_toggle = QtWidgets.QPushButton("T")
-        self.translation_toggle.setCheckable(True)
-        self.translation_toggle.setChecked(True)
-        self.rotation_toggle = QtWidgets.QPushButton("R")
-        self.rotation_toggle.setCheckable(True)
-        self.rotation_toggle.setChecked(True)
-        self.scale_toggle = QtWidgets.QPushButton("S")
-        self.scale_toggle.setCheckable(True)
-
-        button_layout.addWidget(self.translation_toggle)
-        button_layout.addWidget(self.rotation_toggle)
-        button_layout.addWidget(self.scale_toggle)
-
-        slider_layout = QtWidgets.QHBoxLayout()
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider.setMinimum(-20)
-        self.slider.setMaximum(120)
-        self.slider.setValue(50)
-        self.slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
-        self.slider.setTickInterval(10)
-
-        self.slider_label = QtWidgets.QLabel("50 %")
-        self.slider_label.setFixedWidth(50)
-        self.slider.valueChanged.connect(self.update_label)
-        self.slider.valueChanged.connect(self.inbetween)
-
-        slider_layout.addWidget(self.slider)
-        slider_layout.addWidget(self.slider_label)
-
-        layout.addLayout(button_layout)
-        layout.addLayout(slider_layout)
-
-        self.setLayout(layout)
-
-        self.returnPressedShortcut = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Return), self)
-        self.returnPressedShortcut.activated.connect(self.close)
-
-    def update_label(self, value: int):
-        self.slider_label.setText(str(value) + " %")
-
-    def inbetween(self, value: int):
-        ratio = value / 100.0
-
-        with change_all_models_ctx():
-            for model in self.models:
-                # if "Effector" in model.Name:
-                #     continue
-                prev_pose = self.prev_pose[model]
-                next_pose = self.next_pose[model]
-
-                translation = prev_pose[0] + (next_pose[0] - prev_pose[0]) * ratio
-                scaling = prev_pose[2] + (next_pose[2] - prev_pose[2]) * ratio
-
-                Matrix = fb.FBMatrix()
+            if use_rotation:
                 if model.QuaternionInterpolate:
-                    Rotation = fb.FBVector4d()
-                    fb.FBInterpolateRotation(Rotation, prev_pose[1], next_pose[1], ratio)
-                    fb.FBTQSToMatrix(Matrix, translation, Rotation, scaling)
+                    Quaternion = fb.FBVector4d()
+                    fb.FBInterpolateRotation(Quaternion, model_trs_prev.quaternion, model_trs_next.quaternion, ratio)
+
+                    Rotation = fb.FBVector3d()
+                    fb.FBQuaternionToRotation(Rotation, Quaternion)
+
+                    model.SetVector(Rotation, fb.FBModelTransformationType.kModelRotation, False)
                 else:
                     Rotation = fb.FBVector3d()
-                    fb.FBInterpolateRotation(Rotation, prev_pose[1], next_pose[1], ratio)
-                    fb.FBTRSToMatrix(Matrix, translation, Rotation, scaling)
-                
-                model.SetMatrix(Matrix, fb.FBModelTransformationType.kModelTransformation, False)
+                    fb.FBInterpolateRotation(Rotation, model_trs_prev.rotation, model_trs_next.rotation, ratio)
+                    model.SetVector(Rotation, fb.FBModelTransformationType.kModelRotation, False)
 
+            if use_scaling:
+                scaling = lerp(model_trs_prev.scaling, model_trs_next.scaling, ratio)
+                model.SetVector(scaling, fb.FBModelTransformationType.kModelScaling, False)
 
-class NativeWidgetHolder(fb.FBWidgetHolder):
-    def WidgetCreate(self, pWidgetParent: int):
-        # parent = 
-        self.mNativeQtWidget = PoseInbetween(wrapInstance(pWidgetParent, QtWidgets.QWidget))
-        # dockWidget = self.mNativeQtWidget.parent().parent().parent()
+def apply_pose(models: typing.Iterable[fb.FBModel], pose: PoseT) -> None:
+    with change_all_models_ctx():
+        for model in models:
+            model_trs = pose[model]
 
-        # dockWidget.setWindowFlags(dockWidget.windowFlags() | QtCore.Qt.FramelessWindowHint)
-        # parent.parent().setWindowFlags(QtCore.Qt.FramelessWindowHint)
-        # self.mNativeQtWidget.setAttribute(QtCore.Qt.WA_TranslucentBackground)
-        # self.mNativeQtWidget.parent().setAttribute(QtCore.Qt.WA_TranslucentBackground)
-        # self.mNativeQtWidget.parent().parent().setAttribute(QtCore.Qt.WA_TranslucentBackground)
-
-        # for child in dockWidget.children():
-        #     if isinstance(child, QtWidgets.QWidget):
-        #         # delete the close button
-
-
-        return getCppPointer(self.mNativeQtWidget)[0]
-
-
-class NativeQtWidgetTool(fb.FBTool):
-    def __init__(self, name: str):
-        super().__init__(name, True)
-        self.mNativeWidgetHolder = NativeWidgetHolder()
-        self.BuildLayout()
-
-        self.SetPossibleDockPosition(fb.FBToolPossibleDockPosition.kFBToolPossibleDockPosNone)
-
-        self.StartSizeX = 400
-        self.StartSizeY = 80
-
-        # Fetch cursor position
-        cursor_pos = QtGui.QCursor.pos()
-
-        # Move widget to cursor position
-        self.StartPosX = int(cursor_pos.x() - self.StartSizeX / 2)
-        self.StartPosY = cursor_pos.y() - 50
-
-        
-
-    def BuildLayout(self):
-        x = fb.FBAddRegionParam(0,fb.FBAttachType.kFBAttachLeft,"")
-        y = fb.FBAddRegionParam(0,fb.FBAttachType.kFBAttachTop,"")
-        w = fb.FBAddRegionParam(0,fb.FBAttachType.kFBAttachRight,"")
-        h = fb.FBAddRegionParam(0,fb.FBAttachType.kFBAttachBottom,"")
-        self.AddRegion("main","main", x, y, w, h)
-        self.SetControl("main", self.mNativeWidgetHolder)
-
-
-fb_additions.FBDestroyToolByName(TOOL_NAME)
-
-
-def main():
-    if TOOL_NAME in fb_additions.FBToolList:
-        tool = fb_additions.FBToolList[TOOL_NAME]
-        fb.ShowTool(tool)
-    else:
-        tool = NativeQtWidgetTool(TOOL_NAME)
-        fb.ShowTool(tool)
-
-main()
+            model.SetVector(model_trs.translation, fb.FBModelTransformationType.kModelTranslation, False)
+            model.SetVector(model_trs.rotation, fb.FBModelTransformationType.kModelRotation, False)
+            model.SetVector(model_trs.scaling, fb.FBModelTransformationType.kModelScaling, False)
