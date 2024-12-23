@@ -104,7 +104,6 @@ def get_transformation_at_times(models: fb.FBModelList, prev_pose_time: fb.FBTim
         Translation = fb.FBVector4d()
         Scaling = fb.FBSVector()
 
-        # model.GetMatrix(Matrix, fb.FBModelTransformationType.kModelTransformation, False)
         model.GetLocalTransformationMatrixWithGlobalRotationDoF(Matrix)
 
         if model.QuaternionInterpolate:
@@ -128,7 +127,6 @@ def get_transformation_at_times(models: fb.FBModelList, prev_pose_time: fb.FBTim
         Translation = fb.FBVector4d()
         Scaling = fb.FBSVector()
 
-        # model.GetMatrix(Matrix, fb.FBModelTransformationType.kModelTransformation, False)
         model.GetLocalTransformationMatrixWithGlobalRotationDoF(Matrix)
         if model.QuaternionInterpolate:
             Rotation = fb.FBVector4d()
