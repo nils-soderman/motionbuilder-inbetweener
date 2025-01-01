@@ -41,6 +41,9 @@ class Slider(QtWidgets.QSlider):
         if event.modifiers() & QtCore.Qt.ShiftModifier:
             self.setValue(0)
 
+        if event.modifiers() & QtCore.Qt.ControlModifier:
+            self.snap(event)
+
         self.last_mouse_pos_x = event.pos().x()
         self.last_value = self.value()
 
@@ -55,12 +58,7 @@ class Slider(QtWidgets.QSlider):
 
             # Snap if control is pressed
             if event.modifiers() & QtCore.Qt.ControlModifier:
-                value = (self.maximum() - self.minimum()) * \
-                    event.pos().x() / self.width() + self.minimum()
-                self.last_value = round(
-                    value / self.tickInterval()) * self.tickInterval()
-                self.setValue(self.last_value)
-                self.last_mouse_pos_x = event.pos().x()
+                self.snap(event)
                 return
 
             delta = event.pos().x() - self.last_mouse_pos_x
@@ -69,11 +67,16 @@ class Slider(QtWidgets.QSlider):
             if event.modifiers() & QtCore.Qt.ShiftModifier:
                 delta *= 0.1
 
-            self.last_value = self.last_value + \
-                (delta / self.width()) * (self.maximum() - self.minimum())
+            self.last_value = self.last_value + (delta / self.width()) * (self.maximum() - self.minimum())
             self.setValue(self.last_value)
 
             self.last_mouse_pos_x = event.pos().x()
+
+    def snap(self, event: QtGui.QMouseEvent):
+        value = (self.maximum() - self.minimum()) * event.pos().x() / self.width() + self.minimum()
+        self.last_value = round(value / self.tickInterval()) * self.tickInterval()
+        self.setValue(self.last_value)
+        self.last_mouse_pos_x = event.pos().x()
 
 
 class TRSOption(QtWidgets.QWidget):
@@ -85,20 +88,22 @@ class TRSOption(QtWidgets.QWidget):
         super().__init__(parent)
 
         layout = QtWidgets.QHBoxLayout()
+        layout.setContentsMargins(4, 0, 0, 0)
         layout.setSpacing(2)
 
-        self.translation_btn = QtWidgets.QPushButton("T")
-        self.translation_btn.setCheckable(True)
-        self.translation_btn.setChecked(True)
-        self.rotation_btn = QtWidgets.QPushButton("R")
-        self.rotation_btn.setCheckable(True)
-        self.rotation_btn.setChecked(True)
-        self.scale_btn = QtWidgets.QPushButton("S")
-        self.scale_btn.setCheckable(True)
+        self.settings = QtCore.QSettings("MotionBuilder", "InBetweener")
 
-        layout.addWidget(self.translation_btn)
-        layout.addWidget(self.rotation_btn)
-        layout.addWidget(self.scale_btn)
+        self.translation_btn = QtWidgets.QPushButton("T")
+        self.rotation_btn = QtWidgets.QPushButton("R")
+        self.scale_btn = QtWidgets.QPushButton("S")
+
+        for btn, default_value in ((self.translation_btn, True),
+                                   (self.rotation_btn, True),
+                                   (self.scale_btn, False)):
+            btn.setCursor(QtCore.Qt.PointingHandCursor)
+            btn.setCheckable(True)
+            btn.setChecked(self.settings.value(btn.text(), default_value, type=bool))
+            layout.addWidget(btn)
 
         self.setLayout(layout)
 
@@ -109,20 +114,22 @@ class TRSOption(QtWidgets.QWidget):
     def on_button_clicked(self):
         # If Ctrl is pressed, set the clicked button as the only checked button
         modifiers = QtGui.QGuiApplication.keyboardModifiers()
+        sender = self.sender()
         if modifiers == QtCore.Qt.ControlModifier:
-            sender = self.sender()
             self.translation_btn.setChecked(sender == self.translation_btn)
             self.rotation_btn.setChecked(sender == self.rotation_btn)
             self.scale_btn.setChecked(sender == self.scale_btn)
 
+        self.settings.setValue(sender.text(), sender.isChecked())
+
     @property
     def translation(self) -> bool:
         return self.translation_btn.isChecked()
-    
+
     @property
     def rotation(self) -> bool:
         return self.rotation_btn.isChecked()
-    
+
     @property
     def scale(self) -> bool:
         return self.scale_btn.isChecked()
@@ -132,7 +139,7 @@ class PoseInbetween(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget, stylesheet: str | None = None):
         super().__init__(parent)
 
-        self.initUI()
+        self.undo_manager = fb.FBUndoManager()
 
         if stylesheet is not None:
             self.setStyleSheet(stylesheet)
@@ -147,9 +154,9 @@ class PoseInbetween(QtWidgets.QWidget):
         self.prev_pose = None
         self.current_pose = None
 
-    def initUI(self):
-        self.setWindowTitle("Pose Inbetween")
-        self.setGeometry(100, 100, 300, 150)
+        self.init_ui()
+
+    def init_ui(self):
         layout = QtWidgets.QHBoxLayout()
         layout.setSpacing(5)
         layout.setContentsMargins(1, 1, 1, 1)
@@ -175,6 +182,11 @@ class PoseInbetween(QtWidgets.QWidget):
 
     def slider_pressed(self):
         self.update_pose()
+
+        self.undo_manager.TransactionBegin("Inbetween Pose")
+        for model in self.models:
+            self.undo_manager.TransactionAddModelTRS(model)
+
         self.editing = True
         self.slider_value_changed(self.slider.value())
 
@@ -185,6 +197,8 @@ class PoseInbetween(QtWidgets.QWidget):
         self.slider.blockSignals(True)
         self.slider.setValue(0)
         self.slider.blockSignals(False)
+
+        self.undo_manager.TransactionEnd()
 
     def slider_value_changed(self, value: int):
         if not self.editing:
@@ -246,14 +260,10 @@ class NativeQtWidgetTool(fb.FBTool):
         self.native_holder = NativeWidgetHolder(stylesheet)
         self.BuildLayout()
 
-        self.MinSizeY = 30
+        self.MinSizeY = 20
 
-        self.StartSizeX = 400
-        self.StartSizeY = 80
-
-        cursor_pos = QtGui.QCursor.pos()
-        self.StartPosX = int(cursor_pos.x() - self.StartSizeX / 2)
-        self.StartPosY = cursor_pos.y() - 50
+        self.StartSizeX = 350
+        self.StartSizeY = 60
 
     def BuildLayout(self):
         x = fb.FBAddRegionParam(0, fb.FBAttachType.kFBAttachLeft, "")

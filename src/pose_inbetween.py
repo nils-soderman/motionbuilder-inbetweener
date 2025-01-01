@@ -14,6 +14,7 @@ import pyfbsdk as fb
 PoseT = dict[fb.FBModel, "ModelTransform"]
 VectorT = typing.TypeVar("VectorT", fb.FBVector3d, fb.FBVector4d, fb.FBSVector)
 
+
 @dataclasses.dataclass
 class ModelTransform:
     translation: fb.FBVector3d
@@ -24,6 +25,7 @@ class ModelTransform:
 
 class change_all_models_ctx:
     """ Context manager to use when changing multiple models in the scene. """
+
     def __enter__(self):
         fb.FBBeginChangeAllModels()
 
@@ -33,6 +35,7 @@ class change_all_models_ctx:
 
 class set_time_ctx:
     """ Context manager to set the time in the scene. """
+
     def __init__(self, time: fb.FBTime, eval: bool = False) -> types.NoneType:
         self.time = time
         self.bEval = eval
@@ -171,6 +174,7 @@ def apply_inbetween_pose(models: typing.Iterable[fb.FBModel], pose_a: PoseT, pos
             if use_scaling:
                 scaling = lerp(model_trs_prev.scaling, model_trs_next.scaling, ratio)
                 model.SetVector(scaling, fb.FBModelTransformationType.kModelScaling, False)
+
 
 def apply_pose(models: typing.Iterable[fb.FBModel], pose: PoseT) -> None:
     with change_all_models_ctx():
