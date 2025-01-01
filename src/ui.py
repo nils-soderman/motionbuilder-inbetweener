@@ -1,5 +1,7 @@
 from . import pose_inbetween
 
+import os
+
 import pyfbsdk as fb
 import pyfbsdk_additions as fb_additions
 
@@ -10,19 +12,133 @@ except ImportError:
     from PySide2 import QtWidgets, QtCore, QtGui
     from shiboken2 import wrapInstance, getCppPointer
 
-# from importlib import reload
-# reload(pose_inbetween)
-
 
 TOOL_NAME = "In-betweener"
 
-class PoseInbetween(QtWidgets.QWidget):
+STYLESHEET_FILE = os.path.join(os.path.dirname(__file__), "style.qss")
+
+
+class Slider(QtWidgets.QSlider):
     SLIDER_RESOLUTION = 1000
 
     def __init__(self, parent: QtWidgets.QWidget):
         super().__init__(parent)
+        self.setOrientation(QtCore.Qt.Horizontal)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.bIsEditing = False
+
+        self.last_value = 0
+        self.last_mouse_pos_x = None
+
+        self.setTickInterval(250)
+
+        self.setMinimum(int(-1.5 * self.SLIDER_RESOLUTION))
+        self.setMaximum(int(1.5 * self.SLIDER_RESOLUTION))
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent):
+        super().mousePressEvent(event)
+        self.bIsEditing = True
+        if event.modifiers() & QtCore.Qt.ShiftModifier:
+            self.setValue(0)
+
+        self.last_mouse_pos_x = event.pos().x()
+        self.last_value = self.value()
+
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent):
+        super().mouseReleaseEvent(event)
+        self.bIsEditing = False
+        self.last_mouse_pos_x = None
+        self.last_value = 0
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent):
+        if self.bIsEditing and self.last_mouse_pos_x is not None:
+
+            # Snap if control is pressed
+            if event.modifiers() & QtCore.Qt.ControlModifier:
+                value = (self.maximum() - self.minimum()) * \
+                    event.pos().x() / self.width() + self.minimum()
+                self.last_value = round(
+                    value / self.tickInterval()) * self.tickInterval()
+                self.setValue(self.last_value)
+                self.last_mouse_pos_x = event.pos().x()
+                return
+
+            delta = event.pos().x() - self.last_mouse_pos_x
+
+            # Use more precise delta if shift is pressed
+            if event.modifiers() & QtCore.Qt.ShiftModifier:
+                delta *= 0.1
+
+            self.last_value = self.last_value + \
+                (delta / self.width()) * (self.maximum() - self.minimum())
+            self.setValue(self.last_value)
+
+            self.last_mouse_pos_x = event.pos().x()
+
+
+class TRSOption(QtWidgets.QWidget):
+    """
+    Widget containing 3 buttons to toggle translation, rotation and scaling
+    """
+
+    def __init__(self, parent: QtWidgets.QWidget):
+        super().__init__(parent)
+
+        layout = QtWidgets.QHBoxLayout()
+        layout.setSpacing(2)
+
+        self.translation_btn = QtWidgets.QPushButton("T")
+        self.translation_btn.setCheckable(True)
+        self.translation_btn.setChecked(True)
+        self.rotation_btn = QtWidgets.QPushButton("R")
+        self.rotation_btn.setCheckable(True)
+        self.rotation_btn.setChecked(True)
+        self.scale_btn = QtWidgets.QPushButton("S")
+        self.scale_btn.setCheckable(True)
+
+        layout.addWidget(self.translation_btn)
+        layout.addWidget(self.rotation_btn)
+        layout.addWidget(self.scale_btn)
+
+        self.setLayout(layout)
+
+        self.translation_btn.clicked.connect(self.on_button_clicked)
+        self.rotation_btn.clicked.connect(self.on_button_clicked)
+        self.scale_btn.clicked.connect(self.on_button_clicked)
+
+    def on_button_clicked(self):
+        # If Ctrl is pressed, set the clicked button as the only checked button
+        modifiers = QtGui.QGuiApplication.keyboardModifiers()
+        if modifiers == QtCore.Qt.ControlModifier:
+            sender = self.sender()
+            self.translation_btn.setChecked(sender == self.translation_btn)
+            self.rotation_btn.setChecked(sender == self.rotation_btn)
+            self.scale_btn.setChecked(sender == self.scale_btn)
+
+    @property
+    def translation(self) -> bool:
+        return self.translation_btn.isChecked()
+    
+    @property
+    def rotation(self) -> bool:
+        return self.rotation_btn.isChecked()
+    
+    @property
+    def scale(self) -> bool:
+        return self.scale_btn.isChecked()
+
+
+class PoseInbetween(QtWidgets.QWidget):
+    def __init__(self, parent: QtWidgets.QWidget, stylesheet: str | None = None):
+        super().__init__(parent)
 
         self.initUI()
+
+        if stylesheet is not None:
+            self.setStyleSheet(stylesheet)
+        else:
+            with open(STYLESHEET_FILE, "r") as f:
+                self.setStyleSheet(f.read())
 
         self.editing = False
 
@@ -35,54 +151,36 @@ class PoseInbetween(QtWidgets.QWidget):
         self.setWindowTitle("Pose Inbetween")
         self.setGeometry(100, 100, 300, 150)
         layout = QtWidgets.QHBoxLayout()
+        layout.setSpacing(5)
+        layout.setContentsMargins(1, 1, 1, 1)
 
-        button_layout = QtWidgets.QHBoxLayout()
-        button_layout.setSpacing(2)
-        self.translation_toggle = QtWidgets.QPushButton("T")
-        self.translation_toggle.setCheckable(True)
-        self.translation_toggle.setChecked(True)
-        self.rotation_toggle = QtWidgets.QPushButton("R")
-        self.rotation_toggle.setCheckable(True)
-        self.rotation_toggle.setChecked(True)
-        self.scale_toggle = QtWidgets.QPushButton("S")
-        self.scale_toggle.setCheckable(True)
+        self.trs_option = TRSOption(self)
 
-        button_layout.addWidget(self.translation_toggle)
-        button_layout.addWidget(self.rotation_toggle)
-        button_layout.addWidget(self.scale_toggle)
+        self.slider = Slider(self)
 
-        slider_layout = QtWidgets.QHBoxLayout()
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider.setMinimum(int(-1.5 * self.SLIDER_RESOLUTION))
-        self.slider.setMaximum(int(1.5 * self.SLIDER_RESOLUTION))
-        self.slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
-        self.slider.setTickInterval(250)
-
-        self.slider_label = QtWidgets.QLabel("0 %")
-        self.slider_label.setFixedWidth(30)
+        self.label = QtWidgets.QLabel("0.00")
+        self.label.setFixedWidth(30)
         self.slider.valueChanged.connect(self.slider_value_changed)
         self.slider.sliderPressed.connect(self.slider_pressed)
         self.slider.sliderReleased.connect(self.slider_released)
 
-        slider_layout.addWidget(self.slider)
-
-        layout.addLayout(button_layout)
-        layout.addLayout(slider_layout)
+        layout.addWidget(self.trs_option)
+        layout.addWidget(self.slider)
+        layout.addWidget(self.label)
 
         self.setLayout(layout)
 
         self.returnPressedShortcut = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Return), self)
         self.returnPressedShortcut.activated.connect(self.close)
 
-    def update_label(self, value: int):
-        self.slider_label.setText(str(value) + " %")
-
     def slider_pressed(self):
         self.update_pose()
         self.editing = True
+        self.slider_value_changed(self.slider.value())
 
     def slider_released(self):
         self.editing = False
+        self.label.setText("0.00")
 
         self.slider.blockSignals(True)
         self.slider.setValue(0)
@@ -92,7 +190,9 @@ class PoseInbetween(QtWidgets.QWidget):
         if not self.editing:
             return
 
-        ratio = value / self.SLIDER_RESOLUTION
+        self.label.setText(f"{value / 1000:.2f}")
+
+        ratio = value / Slider.SLIDER_RESOLUTION
 
         if ratio > 0:
             other_pose = self.next_pose
@@ -103,13 +203,13 @@ class PoseInbetween(QtWidgets.QWidget):
         if self.current_pose is None or other_pose is None:
             return
 
-        pose_inbetween.apply_inbetween_pose(self.models, 
-                                            self.current_pose, 
-                                            other_pose, 
-                                            ratio, 
-                                            use_translation=self.translation_toggle.isChecked(), 
-                                            use_rotation=self.rotation_toggle.isChecked(), 
-                                            use_scaling=self.scale_toggle.isChecked())
+        pose_inbetween.apply_inbetween_pose(self.models,
+                                            self.current_pose,
+                                            other_pose,
+                                            ratio,
+                                            use_translation=self.trs_option.translation,
+                                            use_rotation=self.trs_option.rotation,
+                                            use_scaling=self.trs_option.scale)
 
     def update_pose(self):
         self.models = pose_inbetween.get_models()
@@ -130,18 +230,23 @@ class PoseInbetween(QtWidgets.QWidget):
 
 
 class NativeWidgetHolder(fb.FBWidgetHolder):
+    def __init__(self, stylesheet: str | None = None):
+        super().__init__()
+
+        self.stylesheet = stylesheet
+
     def WidgetCreate(self, parent_cpp_ptr: int):
-        self.native_widget = PoseInbetween(wrapInstance(parent_cpp_ptr, QtWidgets.QWidget))
+        self.native_widget = PoseInbetween(wrapInstance(parent_cpp_ptr, QtWidgets.QWidget), self.stylesheet)
         return getCppPointer(self.native_widget)[0]
 
 
 class NativeQtWidgetTool(fb.FBTool):
-    def __init__(self, name: str):
+    def __init__(self, name: str, stylesheet: str | None = None):
         super().__init__(name, True)
-        self.native_holder = NativeWidgetHolder()
+        self.native_holder = NativeWidgetHolder(stylesheet)
         self.BuildLayout()
 
-        self.SetPossibleDockPosition(fb.FBToolPossibleDockPosition.kFBToolPossibleDockPosNone)
+        self.MinSizeY = 30
 
         self.StartSizeX = 400
         self.StartSizeY = 80
@@ -161,16 +266,16 @@ class NativeQtWidgetTool(fb.FBTool):
         self.SetControl(region_name, self.native_holder)
 
 
-def main():
+def show_tool(stylesheet: str | None = None) -> fb.FBTool:
     fb_additions.FBDestroyToolByName(TOOL_NAME)
 
     if TOOL_NAME in fb_additions.FBToolList:
         tool = fb_additions.FBToolList[TOOL_NAME]
     else:
-        tool = NativeQtWidgetTool(TOOL_NAME)
+        tool = NativeQtWidgetTool(TOOL_NAME, stylesheet)
 
-    fb.ShowTool(tool)
+    return fb.ShowTool(tool)
 
 
 if __name__ == "__main__" or "builtin" in __name__:
-    main()
+    show_tool()
