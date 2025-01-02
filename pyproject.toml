@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "motionbuilder-inbetweener"
+version = "0.1.0"
+description = "A tool for Autodesk MotionBuilder to create in-between keyframes for selected object(s) or the active character."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Nils Söderman" }
+]
+
+[project.urls]
+repository = "https://github.com/nils-soderman/motionbuilder-inbetweener"
+
+[tool.setuptools.packages.find]
+where = ["."]

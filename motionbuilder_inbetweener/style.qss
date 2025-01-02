@@ -38,12 +38,11 @@ QPushButton:hover {
 
 QPushButton:checked {
     background-color: #343434;
-    color: #ffffff;
-    border-right: 1px solid #424242;
-    border-bottom: 1px solid #424242;
+    /* border-right: 1px solid #424242;
+    border-bottom: 1px solid #424242; */
     
-    border-top: 1px solid #1e1e1e;
-    border-left: 1px solid #1e1e1e;
+    /* border-top: 1px solid #1e1e1e;
+    border-left: 1px solid #1e1e1e; */
 }
 
 QPushButton:checked:hover {

@@ -78,7 +78,6 @@ class Slider(QtWidgets.QSlider):
         self.setValue(self.last_value)
         self.last_mouse_pos_x = event.pos().x()
 
-
 class TRSOption(QtWidgets.QWidget):
     """
     Widget containing 3 buttons to toggle translation, rotation and scaling
