@@ -25,7 +25,7 @@ class Slider(QtWidgets.QSlider):
         super().__init__(parent)
         self.setOrientation(QtCore.Qt.Horizontal)
         self.setCursor(QtCore.Qt.PointingHandCursor)
-        self.bIsEditing = False
+        self.is_editing = False
 
         self.last_value = 0
         self.last_mouse_pos_x = None
@@ -37,9 +37,11 @@ class Slider(QtWidgets.QSlider):
 
     def mousePressEvent(self, event: QtGui.QMouseEvent):
         super().mousePressEvent(event)
-        self.bIsEditing = True
+
+        self.is_editing = True
+
         if event.modifiers() & QtCore.Qt.ShiftModifier:
-            self.setValue(0)
+            self.set_value_no_signal(0)
 
         if event.modifiers() & QtCore.Qt.ControlModifier:
             self.snap(event)
@@ -49,13 +51,12 @@ class Slider(QtWidgets.QSlider):
 
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent):
         super().mouseReleaseEvent(event)
-        self.bIsEditing = False
+        self.is_editing = False
         self.last_mouse_pos_x = None
         self.last_value = 0
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent):
-        if self.bIsEditing and self.last_mouse_pos_x is not None:
-
+        if self.is_editing and self.last_mouse_pos_x is not None:
             # Snap if control is pressed
             if event.modifiers() & QtCore.Qt.ControlModifier:
                 self.snap(event)
@@ -77,6 +78,12 @@ class Slider(QtWidgets.QSlider):
         self.last_value = round(value / self.tickInterval()) * self.tickInterval()
         self.setValue(self.last_value)
         self.last_mouse_pos_x = event.pos().x()
+
+    def set_value_no_signal(self, value: int):
+        self.blockSignals(True)
+        self.setValue(value)
+        self.blockSignals(False)
+
 
 class TRSOption(QtWidgets.QWidget):
     """
@@ -186,21 +193,15 @@ class PoseInbetween(QtWidgets.QWidget):
         for model in self.models:
             self.undo_manager.TransactionAddModelTRS(model)
 
-        self.editing = True
-        self.slider_value_changed(self.slider.value())
-
     def slider_released(self):
-        self.editing = False
         self.label.setText("0.00")
 
-        self.slider.blockSignals(True)
-        self.slider.setValue(0)
-        self.slider.blockSignals(False)
+        self.slider.set_value_no_signal(0)
 
         self.undo_manager.TransactionEnd()
 
     def slider_value_changed(self, value: int):
-        if not self.editing:
+        if not self.slider.is_editing:
             return
 
         self.label.setText(f"{value / 1000:.2f}")
@@ -228,7 +229,12 @@ class PoseInbetween(QtWidgets.QWidget):
         self.models = pose_inbetween.get_models()
 
         self.current_time = fb.FBSystem().LocalTime
-        self.prev_pose_time, self.next_pose_time = pose_inbetween.get_closest_keyframes(self.models)
+        self.prev_pose_time, self.next_pose_time = pose_inbetween.get_closest_keyframes(
+            self.models,
+            self.trs_option.translation,
+            self.trs_option.rotation,
+            self.trs_option.scale
+        )
 
         fb.FBSystem().Scene.Evaluate()
         self.current_pose = pose_inbetween.get_pose(self.models)
