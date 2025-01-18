@@ -20,40 +20,117 @@ STYLESHEET_FILE = os.path.join(os.path.dirname(__file__), "style.qss")
 
 class Slider(QtWidgets.QSlider):
     SLIDER_RESOLUTION = 1000
+    SETTING_ID_BLEND_CURRENT_POSE = "BlendCurrentPose"
+    SETTING_ID_OVERSHOOT = "Overshoot"
 
-    def __init__(self, parent: QtWidgets.QWidget):
+    def __init__(self, parent: QtWidgets.QWidget, settings: QtCore.QSettings):
         super().__init__(parent)
+        self.settings = settings
+
         self.setOrientation(QtCore.Qt.Horizontal)
         self.setCursor(QtCore.Qt.PointingHandCursor)
-        self.is_editing = False
-
-        self.last_value = 0
-        self.last_mouse_pos_x = None
-
         self.setTickInterval(250)
 
-        self.setMinimum(int(-1.5 * self.SLIDER_RESOLUTION))
-        self.setMaximum(int(1.5 * self.SLIDER_RESOLUTION))
+        self._blend_from_current_pose = bool(self.settings.value(self.SETTING_ID_BLEND_CURRENT_POSE, True, type=bool))
+        self._overshoot = self.settings.value(self.SETTING_ID_OVERSHOOT, 0.5, type=float)
+
+        self.last_mouse_pos_x = None
+        self.is_editing = False
+        self.last_value = 0
+
+        self.buttons: list[tuple[QtWidgets.QPushButton, float]] = []
+        for x in (-1, -0.5, 0.5, 1):
+            button = QtWidgets.QPushButton(self)
+            if isinstance(x, int):
+                button.setFixedSize(5, 8)
+            else:
+                button.setFixedSize(5, 6)
+            button.setVisible(True)
+            button.mousePressEvent = lambda event, x=x: self.btn_press_event(x)
+            button.mouseReleaseEvent = self.mouseReleaseEvent
+            self.buttons.append((button, x))
+
+            button.setAccessibleName("sliderButton")
+            button.setStyleSheet(self.styleSheet())
+
+        self._update_min_max()
+
+    def paintEvent(self, event: QtGui.QPaintEvent):
+        super().paintEvent(event)
+
+        if self.is_editing:
+            painter = QtGui.QPainter(self)
+            rect = self.rect()
+            rect.adjust(10, 0, -10, 0)
+
+            painter.setOpacity(0.5)
+            value = self.value()
+
+            if value > 0:
+                align = QtCore.Qt.AlignLeft
+            else:
+                align = QtCore.Qt.AlignRight
+
+            painter.drawText(rect, align, f"{value / self.SLIDER_RESOLUTION:.2f}")
+
+    def resizeEvent(self, event: QtGui.QResizeEvent):
+        self.update_button_positions()
+
+    def update_button_positions(self):
+        rect = self.rect()
+        slider_range = self.maximum() - self.minimum()
+        for button, x in self.buttons:
+            # Check if button is within slider range
+            if x * self.SLIDER_RESOLUTION <= self.minimum() or x * self.SLIDER_RESOLUTION >= self.maximum():
+                button.setHidden(True)
+                continue
+
+            pos_1 = (x * self.SLIDER_RESOLUTION - self.minimum()) * rect.width() / slider_range
+            pos_1 -= (x * self.SLIDER_RESOLUTION / self.maximum()) * 4
+
+            button.move(int(pos_1 - button.width() / 2), rect.bottom() - button.height() + 2)
+            button.setHidden(False)
+
+    def btn_press_event(self, value) -> None:
+        self.last_value = value * self.SLIDER_RESOLUTION
+        self.setValue(self.last_value)
+        self.is_editing = True
+
+        current_mouse_pos = QtGui.QCursor().pos()
+        self.last_mouse_pos_x = self.mapFromGlobal(current_mouse_pos).x()
+
+    def _update_min_max(self):
+        value = int((1 + self.overshoot) * self.SLIDER_RESOLUTION)
+        self.setMinimum(-value)
+        self.setMaximum(value)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent):
         super().mousePressEvent(event)
+        if event.button() == QtCore.Qt.RightButton:
+            self.show_context_menu(event.pos())
+            return
 
         self.is_editing = True
 
-        if event.modifiers() & QtCore.Qt.ShiftModifier:
-            self.set_value_no_signal(0)
-
         if event.modifiers() & QtCore.Qt.ControlModifier:
             self.snap(event)
+        elif event.modifiers() & QtCore.Qt.ShiftModifier:
+            if self.blend_from_current_pose:
+                self.set_value_no_signal(0)
+            else:
+                self.setValue(0)
+        else:
+            self.valueChanged.emit(self.value())
 
         self.last_mouse_pos_x = event.pos().x()
         self.last_value = self.value()
 
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent):
-        super().mouseReleaseEvent(event)
         self.is_editing = False
+        super().mouseReleaseEvent(event)
         self.last_mouse_pos_x = None
         self.last_value = 0
+        self.set_value_no_signal(0)
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent):
         if self.is_editing and self.last_mouse_pos_x is not None:
@@ -84,20 +161,74 @@ class Slider(QtWidgets.QSlider):
         self.setValue(value)
         self.blockSignals(False)
 
+    def show_context_menu(self, pos):
+        menu = QtWidgets.QMenu(self)
+
+        action_blend_current = QtGui.QAction("Blend from current pose", self)
+        action_blend_current.setCheckable(True)
+        action_blend_current.setChecked(self.blend_from_current_pose)
+        action_blend_current.triggered.connect(lambda checked: setattr(self, "blend_from_current_pose", checked))
+        menu.addAction(action_blend_current)
+
+        # Overshoot float input
+        overshoot_label = QtWidgets.QLabel("Overshoot:")
+        overshoot_input = QtWidgets.QDoubleSpinBox()
+        overshoot_input.setValue(self.overshoot)
+        overshoot_input.setSingleStep(0.1)
+        overshoot_input.setMaximum(10)
+        overshoot_input.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+        overshoot_input.setFixedWidth(50)
+        overshoot_input.editingFinished.connect(lambda: (setattr(self, "overshoot", overshoot_input.value()), menu.close()))
+
+        overshoot_widget = QtWidgets.QWidget()
+        overshoot_layout = QtWidgets.QHBoxLayout()
+        overshoot_layout.setSpacing(0)
+        overshoot_layout.setContentsMargins(6, 1, 0, 0)
+        overshoot_layout.addWidget(overshoot_label)
+        overshoot_layout.addWidget(overshoot_input)
+        overshoot_widget.setLayout(overshoot_layout)
+
+        overshoot_action = QtWidgets.QWidgetAction(self)
+        overshoot_action.setDefaultWidget(overshoot_widget)
+        menu.addAction(overshoot_action)
+
+        menu.exec_(self.mapToGlobal(pos))
+
+    @property
+    def blend_from_current_pose(self) -> bool:
+        return self._blend_from_current_pose
+
+    @blend_from_current_pose.setter
+    def blend_from_current_pose(self, value):
+        self._blend_from_current_pose = value
+        self.settings.setValue(self.SETTING_ID_BLEND_CURRENT_POSE, value)
+
+    @property
+    def overshoot(self) -> float:
+        return self._overshoot
+
+    @overshoot.setter
+    def overshoot(self, value):
+        self._overshoot = value
+        self.settings.setValue(self.SETTING_ID_OVERSHOOT, value)
+        self._update_min_max()
+        self.update_button_positions()
+
 
 class TRSOption(QtWidgets.QWidget):
     """
     Widget containing 3 buttons to toggle translation, rotation and scaling
     """
 
-    def __init__(self, parent: QtWidgets.QWidget):
+    def __init__(self, parent: QtWidgets.QWidget, settings: QtCore.QSettings):
         super().__init__(parent)
+        self.settings = settings
+
+        self.setFixedHeight(22)
 
         layout = QtWidgets.QHBoxLayout()
         layout.setContentsMargins(4, 0, 0, 0)
         layout.setSpacing(2)
-
-        self.settings = QtCore.QSettings("MotionBuilder", "InBetweener")
 
         self.translation_btn = QtWidgets.QPushButton("T")
         self.rotation_btn = QtWidgets.QPushButton("R")
@@ -141,11 +272,16 @@ class TRSOption(QtWidgets.QWidget):
         return self.scale_btn.isChecked()
 
 
+def sign(value):
+    return 1 if value >= 0 else -1
+
+
 class PoseInbetween(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget, stylesheet: str | None = None):
         super().__init__(parent)
 
         self.undo_manager = fb.FBUndoManager()
+        self.settings = QtCore.QSettings("MotionBuilder", "InBetweener")
 
         if stylesheet is not None:
             self.setStyleSheet(stylesheet)
@@ -165,21 +301,18 @@ class PoseInbetween(QtWidgets.QWidget):
     def init_ui(self):
         layout = QtWidgets.QHBoxLayout()
         layout.setSpacing(5)
-        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setContentsMargins(1, 1, 6, 1)
 
-        self.trs_option = TRSOption(self)
+        self.trs_option = TRSOption(self, self.settings)
 
-        self.slider = Slider(self)
+        self.slider = Slider(self, self.settings)
 
-        self.label = QtWidgets.QLabel("0.00")
-        self.label.setFixedWidth(30)
         self.slider.valueChanged.connect(self.slider_value_changed)
         self.slider.sliderPressed.connect(self.slider_pressed)
         self.slider.sliderReleased.connect(self.slider_released)
 
         layout.addWidget(self.trs_option)
         layout.addWidget(self.slider)
-        layout.addWidget(self.label)
 
         self.setLayout(layout)
 
@@ -194,8 +327,6 @@ class PoseInbetween(QtWidgets.QWidget):
             self.undo_manager.TransactionAddModelTRS(model)
 
     def slider_released(self):
-        self.label.setText("0.00")
-
         self.slider.set_value_no_signal(0)
 
         self.undo_manager.TransactionEnd()
@@ -204,26 +335,36 @@ class PoseInbetween(QtWidgets.QWidget):
         if not self.slider.is_editing:
             return
 
-        self.label.setText(f"{value / 1000:.2f}")
-
         ratio = value / Slider.SLIDER_RESOLUTION
 
-        if ratio > 0:
-            other_pose = self.next_pose
-        else:
-            other_pose = self.prev_pose
-            ratio = -ratio
+        if self.slider.blend_from_current_pose:
+            if ratio > 0:
+                other_pose = self.next_pose
+            else:
+                other_pose = self.prev_pose
+                ratio = -ratio
 
-        if self.current_pose is None or other_pose is None:
-            return
+            if self.current_pose is None or other_pose is None:
+                return
 
-        pose_inbetween.apply_inbetween_pose(self.models,
-                                            self.current_pose,
-                                            other_pose,
-                                            ratio,
-                                            use_translation=self.trs_option.translation,
-                                            use_rotation=self.trs_option.rotation,
-                                            use_scaling=self.trs_option.scale)
+            pose_inbetween.apply_inbetween_pose(self.models,
+                                                self.current_pose,
+                                                other_pose,
+                                                ratio,
+                                                use_translation=self.trs_option.translation,
+                                                use_rotation=self.trs_option.rotation,
+                                                use_scaling=self.trs_option.scale)
+
+        elif self.prev_pose is not None and self.next_pose is not None:
+            ratio = (ratio + 1) / 2
+
+            pose_inbetween.apply_inbetween_pose(self.models,
+                                                self.prev_pose,
+                                                self.next_pose,
+                                                ratio,
+                                                use_translation=self.trs_option.translation,
+                                                use_rotation=self.trs_option.rotation,
+                                                use_scaling=self.trs_option.scale)
 
     def update_pose(self):
         self.models = pose_inbetween.get_models()

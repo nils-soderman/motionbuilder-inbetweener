@@ -1,15 +1,21 @@
+QSlider {
+    max-height: 22px;
+}
+
 QSlider::groove {
     background-color: #2A2A2A;
 	border: 0px solid #424242; 
-	height: 15px; 
-	border-radius: 4px;
+    max-height: 22px;
+	border-radius: 2px;
 }
 
 QSlider::handle {
     background-color: #646464;
     border: 1px solid #171717;
     height: 15px;
-    width: 15px;
+    width: 9px;
+    max-width: 15px;
+    max-height: 15px;
     /* margin: -2px 0; handle is placed by default on the groove border, so we need to move it a bit */
     border-radius: 2px; /* Make it round */
 }
@@ -21,7 +27,6 @@ QSlider::handle:hover {
 QSlider::handle:active {
     background-color: #668CB3;
 }
-
 
 QPushButton {
     background-color: #5C5C5C;
@@ -51,4 +56,14 @@ QPushButton:checked:hover {
 
 QPushButton:pressed, QPushButton:checked:pressed {
     background-color: #2a2a2a;
+}
+
+
+QPushButton[accessibleName="sliderButton"] {
+    background-color: #444444;
+    border: 0px;
+}
+
+QPushButton[accessibleName="sliderButton"]:hover {
+    background-color: #5f7f9e;
 }
