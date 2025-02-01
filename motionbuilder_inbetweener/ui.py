@@ -180,12 +180,13 @@ class Slider(QtWidgets.QSlider):
         overshoot_input.setFixedWidth(50)
         overshoot_input.editingFinished.connect(lambda: (setattr(self, "overshoot", overshoot_input.value()), menu.close()))
 
-        overshoot_widget = QtWidgets.QWidget()
         overshoot_layout = QtWidgets.QHBoxLayout()
         overshoot_layout.setSpacing(0)
         overshoot_layout.setContentsMargins(6, 1, 0, 0)
         overshoot_layout.addWidget(overshoot_label)
         overshoot_layout.addWidget(overshoot_input)
+
+        overshoot_widget = QtWidgets.QWidget()
         overshoot_widget.setLayout(overshoot_layout)
 
         overshoot_action = QtWidgets.QWidgetAction(self)
@@ -272,10 +273,6 @@ class TRSOption(QtWidgets.QWidget):
         return self.scale_btn.isChecked()
 
 
-def sign(value):
-    return 1 if value >= 0 else -1
-
-
 class PoseInbetween(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget, stylesheet: str | None = None):
         super().__init__(parent)
@@ -320,7 +317,7 @@ class PoseInbetween(QtWidgets.QWidget):
         self.returnPressedShortcut.activated.connect(self.close)
 
     def slider_pressed(self):
-        self.update_pose()
+        self.update_stored_poses()
 
         self.undo_manager.TransactionBegin("Inbetween Pose")
         for model in self.models:
@@ -366,7 +363,7 @@ class PoseInbetween(QtWidgets.QWidget):
                                                 use_rotation=self.trs_option.rotation,
                                                 use_scaling=self.trs_option.scale)
 
-    def update_pose(self):
+    def update_stored_poses(self):
         self.models = pose_inbetween.get_models()
 
         self.current_time = fb.FBSystem().LocalTime
