@@ -86,9 +86,10 @@ def get_models() -> set[fb.FBModel]:
 
             for i in range(keying_group.GetPropertyCount()):
                 prop = keying_group.GetProperty(i)
-                model = prop.GetOwner()
-                if isinstance(model, fb.FBModel):
-                    selected_models.add(model)
+                if prop:
+                    model = prop.GetOwner()
+                    if isinstance(model, fb.FBModel):
+                        selected_models.add(model)
 
         for group in groups:
             _get_models_from_group(group)
