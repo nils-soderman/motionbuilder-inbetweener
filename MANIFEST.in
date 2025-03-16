@@ -1,1 +1,1 @@
-include *.qss
+recursive-include * *.qss
