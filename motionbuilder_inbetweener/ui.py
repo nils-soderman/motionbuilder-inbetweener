@@ -27,8 +27,8 @@ class Slider(QtWidgets.QSlider):
         super().__init__(parent)
         self.settings = settings
 
-        self.setOrientation(QtCore.Qt.Horizontal)
-        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setOrientation(QtCore.Qt.Orientation.Horizontal)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.setTickInterval(250)
 
         self._blend_from_current_pose = bool(self.settings.value(self.SETTING_ID_BLEND_CURRENT_POSE, True, type=bool))
@@ -67,9 +67,9 @@ class Slider(QtWidgets.QSlider):
             value = self.value()
 
             if value > 0:
-                align = QtCore.Qt.AlignLeft
+                align = QtCore.Qt.AlignmentFlag.AlignLeft
             else:
-                align = QtCore.Qt.AlignRight
+                align = QtCore.Qt.AlignmentFlag.AlignRight
 
             painter.drawText(rect, align, f"{value / self.SLIDER_RESOLUTION:.2f}")
 
@@ -106,15 +106,15 @@ class Slider(QtWidgets.QSlider):
 
     def mousePressEvent(self, event: QtGui.QMouseEvent):
         super().mousePressEvent(event)
-        if event.button() == QtCore.Qt.RightButton:
+        if event.button() == QtCore.Qt.MouseButton.RightButton:
             self.show_context_menu(event.pos())
             return
 
         self.is_editing = True
 
-        if event.modifiers() & QtCore.Qt.ControlModifier:
+        if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
             self.snap(event)
-        elif event.modifiers() & QtCore.Qt.ShiftModifier:
+        elif event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
             if self.blend_from_current_pose:
                 self.set_value_no_signal(0)
             else:
@@ -135,14 +135,14 @@ class Slider(QtWidgets.QSlider):
     def mouseMoveEvent(self, event: QtGui.QMouseEvent):
         if self.is_editing and self.last_mouse_pos_x is not None:
             # Snap if control is pressed
-            if event.modifiers() & QtCore.Qt.ControlModifier:
+            if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
                 self.snap(event)
                 return
 
             delta = event.pos().x() - self.last_mouse_pos_x
 
             # Use more precise delta if shift is pressed
-            if event.modifiers() & QtCore.Qt.ShiftModifier:
+            if event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
                 delta *= 0.1
 
             self.last_value = self.last_value + (delta / self.width()) * (self.maximum() - self.minimum())
@@ -176,7 +176,7 @@ class Slider(QtWidgets.QSlider):
         overshoot_input.setValue(self.overshoot)
         overshoot_input.setSingleStep(0.1)
         overshoot_input.setMaximum(10)
-        overshoot_input.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+        overshoot_input.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         overshoot_input.setFixedWidth(50)
         overshoot_input.editingFinished.connect(lambda: (setattr(self, "overshoot", overshoot_input.value()), menu.close()))
 
@@ -238,7 +238,7 @@ class TRSOption(QtWidgets.QWidget):
         for btn, default_value in ((self.translation_btn, True),
                                    (self.rotation_btn, True),
                                    (self.scale_btn, False)):
-            btn.setCursor(QtCore.Qt.PointingHandCursor)
+            btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
             btn.setCheckable(True)
             btn.setChecked(self.settings.value(btn.text(), default_value, type=bool))
             layout.addWidget(btn)
@@ -253,7 +253,7 @@ class TRSOption(QtWidgets.QWidget):
         # If Ctrl is pressed, set the clicked button as the only checked button
         modifiers = QtGui.QGuiApplication.keyboardModifiers()
         sender = self.sender()
-        if modifiers == QtCore.Qt.ControlModifier:
+        if modifiers == QtCore.Qt.KeyboardModifier.ControlModifier:
             self.translation_btn.setChecked(sender == self.translation_btn)
             self.rotation_btn.setChecked(sender == self.rotation_btn)
             self.scale_btn.setChecked(sender == self.scale_btn)
@@ -313,7 +313,7 @@ class PoseInbetween(QtWidgets.QWidget):
 
         self.setLayout(layout)
 
-        self.returnPressedShortcut = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Return), self)
+        self.returnPressedShortcut = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Return), self)
         self.returnPressedShortcut.activated.connect(self.close)
 
     def slider_pressed(self):
