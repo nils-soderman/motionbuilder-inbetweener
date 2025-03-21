@@ -1,8 +1,9 @@
+"""
+Main functionallity for the in-between tool
+"""
+
 from __future__ import annotations
 
-"""
-In-between poses
-"""
 
 import types
 import typing
@@ -24,7 +25,9 @@ class ModelTransform:
 
 
 class change_all_models_ctx:
-    """ Context manager to use when changing multiple models in the scene. """
+    """ 
+    Context manager for pyfbsdk `FBBeginChangeAllModels` / `FBEndChangeAllModels`
+    """
 
     def __enter__(self):
         fb.FBBeginChangeAllModels()
@@ -34,21 +37,23 @@ class change_all_models_ctx:
 
 
 class set_time_ctx:
-    """ Context manager to set the time in the scene. """
+    """
+    A context manager that sets the current time to a specified value upon entering the context and restores the original time upon exiting.
+    """
 
     def __init__(self, time: fb.FBTime, eval: bool = False) -> types.NoneType:
         self.time = time
-        self.bEval = eval
+        self.eval = eval
 
-        self.current_time = fb.FBSystem().LocalTime
+        self._cached_time = fb.FBSystem().LocalTime
 
     def __enter__(self):
         fb.FBPlayerControl().Goto(self.time)
-        if self.bEval:
+        if self.eval:
             fb.FBSystem().Scene.Evaluate()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        fb.FBPlayerControl().Goto(self.current_time)
+        fb.FBPlayerControl().Goto(self._cached_time)
 
 
 def lerp(a: VectorT, b: VectorT, t: float, /) -> VectorT:
@@ -56,9 +61,7 @@ def lerp(a: VectorT, b: VectorT, t: float, /) -> VectorT:
 
 
 def get_models() -> set[fb.FBModel]:
-    """
-    Get the selected objects in the scene
-    """
+    """"""
     selected_models = fb.FBModelList()
     fb.FBGetSelectedModels(selected_models)
 
@@ -99,7 +102,10 @@ def get_models() -> set[fb.FBModel]:
 
 def get_closest_keyframes(models: typing.Iterable[fb.FBModel], bTranslation=True, bRotation=True, bScale=True) -> tuple[fb.FBTime, fb.FBTime]:
     """
-    Iterate over all the properties of the models and find the closest keyframes to the current time
+    Iterate over the models translation, rotation and scaling properties to find the closest keyframes to the current time
+    
+    Returns:
+        A tuple with the previous and next keyframe times
     """
     system = fb.FBSystem()
     current_time = system.LocalTime
@@ -187,7 +193,14 @@ def get_pose(models: typing.Iterable[fb.FBModel]) -> PoseT:
     return pose
 
 
-def apply_inbetween_pose(models: typing.Iterable[fb.FBModel], pose_a: PoseT, pose_b: PoseT, ratio: float, *, use_translation: bool = True, use_rotation: bool = True, use_scaling: bool = True) -> None:
+def apply_inbetween_pose(models: typing.Iterable[fb.FBModel],
+                         pose_a: PoseT,
+                         pose_b: PoseT,
+                         ratio: float,
+                         *,
+                         use_translation: bool = True,
+                         use_rotation: bool = True,
+                         use_scaling: bool = True) -> None:
     with change_all_models_ctx():
         for model in models:
             model_trs_prev = pose_a[model]
