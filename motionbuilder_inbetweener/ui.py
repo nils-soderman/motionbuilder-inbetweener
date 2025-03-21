@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from . import pose_inbetween
 
 import os
@@ -8,7 +10,7 @@ import pyfbsdk_additions as fb_additions
 try:
     from PySide6 import QtWidgets, QtCore, QtGui
     from shiboken6 import wrapInstance, getCppPointer
-except ImportError:
+except ModuleNotFoundError:
     from PySide2 import QtWidgets, QtCore, QtGui
     from shiboken2 import wrapInstance, getCppPointer
 
@@ -23,6 +25,9 @@ class Slider(QtWidgets.QSlider):
     SETTING_ID_BLEND_CURRENT_POSE = "BlendCurrentPose"
     SETTING_ID_OVERSHOOT = "Overshoot"
 
+    beginEditing = QtCore.Signal()
+    endEditing = QtCore.Signal()
+
     def __init__(self, parent: QtWidgets.QWidget, settings: QtCore.QSettings):
         super().__init__(parent)
         self.settings = settings
@@ -31,27 +36,35 @@ class Slider(QtWidgets.QSlider):
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.setTickInterval(250)
 
-        self._blend_from_current_pose = bool(self.settings.value(self.SETTING_ID_BLEND_CURRENT_POSE, True, type=bool))
-        self._overshoot = self.settings.value(self.SETTING_ID_OVERSHOOT, 0.5, type=float)
+        self.__blend_from_current_pose = bool(self.settings.value(self.SETTING_ID_BLEND_CURRENT_POSE, True, type=bool))
+
+        overshoot_value = self.settings.value(self.SETTING_ID_OVERSHOOT, 0.5, type=float)
+        if isinstance(overshoot_value, float):
+            self._overshoot = overshoot_value
+        else:
+            self.overshoot = 0.5
 
         self.last_mouse_pos_x = None
         self.is_editing = False
         self.last_value = 0
 
+        self.__handle_pressed = False
+
         self.buttons: list[tuple[QtWidgets.QPushButton, float]] = []
         for x in (-1, -0.5, 0.5, 1):
             button = QtWidgets.QPushButton(self)
-            if isinstance(x, int):
-                button.setFixedSize(5, 8)
-            else:
-                button.setFixedSize(5, 6)
-            button.setVisible(True)
-            button.mousePressEvent = lambda event, x=x: self.btn_press_event(x)
-            button.mouseReleaseEvent = self.mouseReleaseEvent
-            self.buttons.append((button, x))
 
+            height = 8 if isinstance(x, int) else 6
+            button.setFixedSize(5, height)
+
+            button.setVisible(True)
             button.setAccessibleName("sliderButton")
             button.setStyleSheet(self.styleSheet())
+
+            button.mousePressEvent = lambda e, x=x: self.btn_press_event(x)
+            button.mouseReleaseEvent = self.mouseReleaseEvent
+
+            self.buttons.append((button, x))
 
         self._update_min_max()
 
@@ -104,13 +117,37 @@ class Slider(QtWidgets.QSlider):
         self.setMinimum(-value)
         self.setMaximum(value)
 
+    def handle_rect(self):
+        opt = QtWidgets.QStyleOptionSlider()
+        self.initStyleOption(opt)
+        handle_rect = self.style().subControlRect(QtWidgets.QStyle.ComplexControl.CC_Slider, opt, QtWidgets.QStyle.SubControl.SC_SliderHandle, self)
+        return handle_rect
+
     def mousePressEvent(self, event: QtGui.QMouseEvent):
-        super().mousePressEvent(event)
+        self.last_mouse_pos_x = event.pos().x()
+
+        # Right click context menu
         if event.button() == QtCore.Qt.MouseButton.RightButton:
-            self.show_context_menu(event.pos())
+            self.show_context_menu_options(event.pos())
             return
 
-        self.is_editing = True
+        # Double click handle to edit value with input
+        if event.type() == QtCore.QEvent.Type.MouseButtonDblClick and event.button() == QtCore.Qt.MouseButton.LeftButton:
+            handle_rect = self.handle_rect()
+            if handle_rect.contains(event.pos()):
+                self.show_context_menu_value_input(event.pos())
+            return
+
+        # To allow double clicking the handle without starting editing
+        # `mousePressEvent` will instead be called again from `mouseMoveEvent`
+        handle_rect = self.handle_rect()
+        if not self.__handle_pressed and handle_rect.contains(event.pos()):
+            self.__handle_pressed = True
+            return
+
+        super().mousePressEvent(event)
+
+        self.__beginEditing()
 
         if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
             self.snap(event)
@@ -122,21 +159,22 @@ class Slider(QtWidgets.QSlider):
         else:
             self.valueChanged.emit(self.value())
 
-        self.last_mouse_pos_x = event.pos().x()
         self.last_value = self.value()
 
-    def mouseReleaseEvent(self, event: QtGui.QMouseEvent):
-        self.is_editing = False
-        super().mouseReleaseEvent(event)
-        self.last_mouse_pos_x = None
-        self.last_value = 0
-        self.set_value_no_signal(0)
+    def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
+        self.__endEditing()
+        super().mouseReleaseEvent(e)
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent):
+        # If the user clicked the handle, and starts dragging, call mousePressEvent again to start the editing process
+        if self.__handle_pressed and not self.is_editing:
+            self.mousePressEvent(event)
+
         if self.is_editing and self.last_mouse_pos_x is not None:
             # Snap if control is pressed
             if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
                 self.snap(event)
+                self.last_mouse_pos_x = event.pos().x()
                 return
 
             delta = event.pos().x() - self.last_mouse_pos_x
@@ -154,14 +192,16 @@ class Slider(QtWidgets.QSlider):
         value = (self.maximum() - self.minimum()) * event.pos().x() / self.width() + self.minimum()
         self.last_value = round(value / self.tickInterval()) * self.tickInterval()
         self.setValue(self.last_value)
-        self.last_mouse_pos_x = event.pos().x()
 
     def set_value_no_signal(self, value: int):
         self.blockSignals(True)
         self.setValue(value)
         self.blockSignals(False)
 
-    def show_context_menu(self, pos):
+    def show_context_menu_options(self, pos: QtCore.QPoint):
+        """ 
+        Show a context menu with options
+        """
         menu = QtWidgets.QMenu(self)
 
         action_blend_current = QtGui.QAction("Blend from current pose", self)
@@ -195,13 +235,63 @@ class Slider(QtWidgets.QSlider):
 
         menu.exec_(self.mapToGlobal(pos))
 
+    def show_context_menu_value_input(self, pos: QtCore.QPoint):
+        """ 
+        Show a context menu where the user can input which value to set the slider to
+        """
+        menu = QtWidgets.QMenu(self)
+
+        value_input = QtWidgets.QDoubleSpinBox()
+        value_input.setMinimum(-float("inf"))
+        value_input.setMaximum(float("inf"))
+        value_input.setSingleStep(0.1)
+        value_input.setFixedWidth(40)
+        value_input.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+
+        value_layout = QtWidgets.QHBoxLayout()
+        value_layout.setSpacing(0)
+        value_layout.setContentsMargins(0, 0, 0, 0)
+        value_layout.addWidget(value_input)
+
+        value_widget = QtWidgets.QWidget()
+        value_widget.setLayout(value_layout)
+
+        value_action = QtWidgets.QWidgetAction(self)
+        value_action.setDefaultWidget(value_widget)
+        menu.addAction(value_action)
+
+        # focus the input field
+        value_input.setFocus()
+        value_input.selectAll()
+
+        value_input.editingFinished.connect(menu.close)
+        value_input.valueChanged.connect(lambda value: self.setValue(value * self.SLIDER_RESOLUTION))
+
+        self.__beginEditing()
+        menu.exec_(self.mapToGlobal(pos))
+        self.__endEditing()
+
+        self.set_value_no_signal(0)
+
+    def __beginEditing(self):
+        self.is_editing = True
+        self.beginEditing.emit()
+
+    def __endEditing(self):
+        self.is_editing = False
+        self.__handle_pressed = False
+        self.last_mouse_pos_x = None
+        self.last_value = 0
+        self.set_value_no_signal(0)
+        self.endEditing.emit()
+
     @property
     def blend_from_current_pose(self) -> bool:
-        return self._blend_from_current_pose
+        return self.__blend_from_current_pose
 
     @blend_from_current_pose.setter
     def blend_from_current_pose(self, value):
-        self._blend_from_current_pose = value
+        self.__blend_from_current_pose = value
         self.settings.setValue(self.SETTING_ID_BLEND_CURRENT_POSE, value)
 
     @property
@@ -209,7 +299,7 @@ class Slider(QtWidgets.QSlider):
         return self._overshoot
 
     @overshoot.setter
-    def overshoot(self, value):
+    def overshoot(self, value: float):
         self._overshoot = value
         self.settings.setValue(self.SETTING_ID_OVERSHOOT, value)
         self._update_min_max()
@@ -305,25 +395,22 @@ class PoseInbetween(QtWidgets.QWidget):
         self.slider = Slider(self, self.settings)
 
         self.slider.valueChanged.connect(self.slider_value_changed)
-        self.slider.sliderPressed.connect(self.slider_pressed)
-        self.slider.sliderReleased.connect(self.slider_released)
+        self.slider.beginEditing.connect(self.on_begin_editing)
+        self.slider.sliderReleased.connect(self.on_end_editing)
 
         layout.addWidget(self.trs_option)
         layout.addWidget(self.slider)
 
         self.setLayout(layout)
 
-        self.returnPressedShortcut = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Return), self)
-        self.returnPressedShortcut.activated.connect(self.close)
-
-    def slider_pressed(self):
+    def on_begin_editing(self):
         self.update_stored_poses()
 
         self.undo_manager.TransactionBegin("Inbetween Pose")
         for model in self.models:
             self.undo_manager.TransactionAddModelTRS(model)
 
-    def slider_released(self):
+    def on_end_editing(self):
         self.slider.set_value_no_signal(0)
 
         self.undo_manager.TransactionEnd()
