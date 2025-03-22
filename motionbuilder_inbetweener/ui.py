@@ -26,6 +26,7 @@ class Slider(QtWidgets.QSlider):
     SETTING_ID_OVERSHOOT = "Overshoot"
 
     beginEditing = QtCore.Signal()
+    editingValueChanged = QtCore.Signal(float)
     endEditing = QtCore.Signal()
 
     def __init__(self, parent: QtWidgets.QWidget, settings: QtCore.QSettings):
@@ -185,6 +186,7 @@ class Slider(QtWidgets.QSlider):
 
             self.last_value = self.last_value + (delta / self.width()) * (self.maximum() - self.minimum())
             self.setValue(self.last_value)
+            self.editingValueChanged.emit(self.last_value / self.SLIDER_RESOLUTION)
 
             self.last_mouse_pos_x = event.pos().x()
 
@@ -234,6 +236,7 @@ class Slider(QtWidgets.QSlider):
         menu.addAction(overshoot_action)
 
         menu.exec_(self.mapToGlobal(pos))
+        menu.deleteLater()
 
     def show_context_menu_value_input(self, pos: QtCore.QPoint):
         """ 
@@ -264,11 +267,16 @@ class Slider(QtWidgets.QSlider):
         value_input.setFocus()
         value_input.selectAll()
 
+        def __on_value_changed(value: float):
+            self.set_value_no_signal(int(value * self.SLIDER_RESOLUTION))
+            self.editingValueChanged.emit(value)
+
+        value_input.valueChanged.connect(__on_value_changed)
         value_input.editingFinished.connect(menu.close)
-        value_input.valueChanged.connect(lambda value: self.setValue(value * self.SLIDER_RESOLUTION))
 
         self.__beginEditing()
         menu.exec_(self.mapToGlobal(pos))
+        menu.deleteLater()
         self.__endEditing()
 
         self.set_value_no_signal(0)
@@ -394,9 +402,9 @@ class PoseInbetween(QtWidgets.QWidget):
 
         self.slider = Slider(self, self.settings)
 
-        self.slider.valueChanged.connect(self.slider_value_changed)
+        self.slider.editingValueChanged.connect(self.editing_value_updated)
         self.slider.beginEditing.connect(self.on_begin_editing)
-        self.slider.sliderReleased.connect(self.on_end_editing)
+        self.slider.endEditing.connect(self.on_end_editing)
 
         layout.addWidget(self.trs_option)
         layout.addWidget(self.slider)
@@ -415,11 +423,8 @@ class PoseInbetween(QtWidgets.QWidget):
 
         self.undo_manager.TransactionEnd()
 
-    def slider_value_changed(self, value: int):
-        if not self.slider.is_editing:
-            return
-
-        ratio = value / Slider.SLIDER_RESOLUTION
+    def editing_value_updated(self, value: int):
+        ratio = value
 
         if self.slider.blend_from_current_pose:
             if ratio > 0:
