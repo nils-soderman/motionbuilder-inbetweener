@@ -61,7 +61,12 @@ def lerp(a: VectorT, b: VectorT, t: float, /) -> VectorT:
 
 
 def get_models() -> set[fb.FBModel]:
-    """"""
+    """
+    Get selected models depending on which keying mode is active:
+        - `kFBCharacterKeyingSelection` - this will return the selected models
+        - `kFBCharacterKeyingBodyPart` - this will return the models that are part of the selected body part
+        - `kFBCharacterKeyingFullBody` - this will return all models that are part of the selected body part and all its children
+    """
     selected_models = fb.FBModelList()
     fb.FBGetSelectedModels(selected_models)
 
@@ -100,10 +105,16 @@ def get_models() -> set[fb.FBModel]:
     return selected_models
 
 
-def get_closest_keyframes(models: typing.Iterable[fb.FBModel], bTranslation=True, bRotation=True, bScale=True) -> tuple[fb.FBTime, fb.FBTime]:
+def get_closest_keyframes(models: typing.Iterable[fb.FBModel], use_translation=True, use_rotation=True, use_scale=True) -> tuple[fb.FBTime, fb.FBTime]:
     """
     Iterate over the models translation, rotation and scaling properties to find the closest keyframes to the current time
-    
+
+    ### Parameters:
+        - models: The models to search for keyframes
+        - use_translation: Whether to search for translation keyframes
+        - use_rotation: Whether to search for rotation keyframes
+        - use_scale: Whether to search for scaling keyframes
+
     Returns:
         A tuple with the previous and next keyframe times
     """
@@ -153,11 +164,11 @@ def get_closest_keyframes(models: typing.Iterable[fb.FBModel], bTranslation=True
     early_out_next = time_next - fb.FBTime(0, 0, 0, 1)
 
     for model in models:
-        if bTranslation:
+        if use_translation:
             _update_closest_keyframe(model.Translation)
-        if bRotation:
+        if use_rotation:
             _update_closest_keyframe(model.Rotation)
-        if bScale:
+        if use_scale:
             _update_closest_keyframe(model.Scaling)
 
         if time_previous >= early_out_prev and time_next <= early_out_next:
@@ -201,6 +212,18 @@ def apply_inbetween_pose(models: typing.Iterable[fb.FBModel],
                          use_translation: bool = True,
                          use_rotation: bool = True,
                          use_scaling: bool = True) -> None:
+    """ 
+    Apply a in-between pose to the models
+
+    ### Parameters:
+        - models: The models to apply the in-between pose to
+        - pose_a: The first pose
+        - pose_b: The second pose
+        - ratio: The ratio between the first and second pose (0.0 - 1.0)
+        - use_translation: Whether to apply the translation
+        - use_rotation: Whether to apply the rotation
+        - use_scaling: Whether to apply the scaling
+    """
     with change_all_models_ctx():
         for model in models:
             model_trs_prev = pose_a[model]
@@ -230,6 +253,9 @@ def apply_inbetween_pose(models: typing.Iterable[fb.FBModel],
 
 
 def apply_pose(models: typing.Iterable[fb.FBModel], pose: PoseT) -> None:
+    """
+    Apply a cached pose to the models
+    """
     with change_all_models_ctx():
         for model in models:
             model_trs = pose[model]

@@ -41,15 +41,14 @@ class Slider(QtWidgets.QSlider):
 
         overshoot_value = self.settings.value(self.SETTING_ID_OVERSHOOT, 0.5, type=float)
         if isinstance(overshoot_value, float):
-            self._overshoot = overshoot_value
+            self.__overshoot = overshoot_value
         else:
             self.overshoot = 0.5
 
-        self.last_mouse_pos_x = None
-        self.is_editing = False
-        self.last_value = 0
-
+        self.__last_mouse_pos_x = None
         self.__handle_pressed = False
+        self.__is_editing = False
+        self.__last_value = 0
 
         self.buttons: list[tuple[QtWidgets.QPushButton, float]] = []
         for x in (-1, -0.5, 0.5, 1):
@@ -60,19 +59,46 @@ class Slider(QtWidgets.QSlider):
 
             button.setVisible(True)
             button.setAccessibleName("sliderButton")
-            button.setStyleSheet(self.styleSheet())
 
-            button.mousePressEvent = lambda e, x=x: self.btn_press_event(x)
+            button.mousePressEvent = lambda e, x=x: self.__btn_press_event(x)
             button.mouseReleaseEvent = self.mouseReleaseEvent
 
             self.buttons.append((button, x))
 
-        self._update_min_max()
+        self.__update_min_max()
+
+    @property
+    def blend_from_current_pose(self) -> bool:
+        """ 
+        True = Blend from the current pose towards the neighboring poses
+        False = Do a absolute blend between the neighboring poses
+        """
+        return self.__blend_from_current_pose
+
+    @blend_from_current_pose.setter
+    def blend_from_current_pose(self, value):
+        self.__blend_from_current_pose = value
+        self.settings.setValue(self.SETTING_ID_BLEND_CURRENT_POSE, value)
+
+    @property
+    def overshoot(self) -> float:
+        """
+        Amount of overshoot to allow when dragging the slider
+        """
+        return self.__overshoot
+
+    @overshoot.setter
+    def overshoot(self, value: float):
+        self.__overshoot = value
+        self.settings.setValue(self.SETTING_ID_OVERSHOOT, value)
+        self.__update_min_max()
+        self.__update_button_positions()
 
     def paintEvent(self, event: QtGui.QPaintEvent):
         super().paintEvent(event)
 
-        if self.is_editing:
+        # Draw the current value on the slider while editing
+        if self.__is_editing:
             painter = QtGui.QPainter(self)
             rect = self.rect()
             rect.adjust(10, 0, -10, 0)
@@ -88,9 +114,109 @@ class Slider(QtWidgets.QSlider):
             painter.drawText(rect, align, f"{value / self.SLIDER_RESOLUTION:.2f}")
 
     def resizeEvent(self, event: QtGui.QResizeEvent):
-        self.update_button_positions()
+        self.__update_button_positions()
 
-    def update_button_positions(self):
+    def mousePressEvent(self, event: QtGui.QMouseEvent):
+        self.__last_mouse_pos_x = event.pos().x()
+
+        # Right click context menu
+        if event.button() == QtCore.Qt.MouseButton.RightButton:
+            self.show_context_menu_options(event.pos())
+            return
+
+        # Double click handle to edit value with input
+        handle_rect = self.get_handle_rect()
+        if event.type() == QtCore.QEvent.Type.MouseButtonDblClick and event.button() == QtCore.Qt.MouseButton.LeftButton:
+            if handle_rect.contains(event.pos()):
+                self.show_context_menu_value_input(event.pos())
+            return
+
+        # To allow double clicking the handle without starting editing
+        # `mousePressEvent` will instead be called again from `mouseMoveEvent`
+        if not self.__handle_pressed and handle_rect.contains(event.pos()):
+            self.__handle_pressed = True
+            return
+
+        super().mousePressEvent(event)
+
+        self.__beginEditing()
+
+        if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
+            self.__snap(event)
+        elif event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
+            if self.blend_from_current_pose:
+                self.__set_value_no_signal(0)
+            else:
+                self.setValue(0)
+        else:
+            self.valueChanged.emit(self.value())
+
+        self.__last_value = self.value()
+
+    def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
+        self.__endEditing()
+        super().mouseReleaseEvent(e)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent):
+        # If the user clicked the handle, and starts dragging, call mousePressEvent again to start the editing process
+        if self.__handle_pressed and not self.__is_editing:
+            self.mousePressEvent(event)
+
+        if self.__is_editing and self.__last_mouse_pos_x is not None:
+            # Snap if control is pressed
+            if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
+                self.__snap(event)
+                self.__last_mouse_pos_x = event.pos().x()
+                return
+
+            delta = event.pos().x() - self.__last_mouse_pos_x
+
+            # Use more precise delta if shift is pressed
+            if event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
+                delta *= 0.1
+
+            self.__last_value = self.__last_value + (delta / self.width()) * (self.maximum() - self.minimum())
+            self.setValue(self.__last_value)
+            self.editingValueChanged.emit(self.__last_value / self.SLIDER_RESOLUTION)
+
+            self.__last_mouse_pos_x = event.pos().x()
+
+    def __btn_press_event(self, value: float) -> None:
+        self.__last_value = value * self.SLIDER_RESOLUTION
+        self.setValue(self.__last_value)
+        self.__is_editing = True
+
+        current_mouse_pos = QtGui.QCursor().pos()
+        self.__last_mouse_pos_x = self.mapFromGlobal(current_mouse_pos).x()
+
+    def __snap(self, event: QtGui.QMouseEvent):
+        value = (self.maximum() - self.minimum()) * event.pos().x() / self.width() + self.minimum()
+        self.__last_value = round(value / self.tickInterval()) * self.tickInterval()
+        self.setValue(self.__last_value)
+
+    def __beginEditing(self):
+        self.__is_editing = True
+        self.beginEditing.emit()
+
+    def __endEditing(self):
+        self.__is_editing = False
+        self.__handle_pressed = False
+        self.__last_mouse_pos_x = None
+        self.__last_value = 0
+        self.__set_value_no_signal(0)
+        self.endEditing.emit()
+
+    def __set_value_no_signal(self, value: int):
+        self.blockSignals(True)
+        self.setValue(value)
+        self.blockSignals(False)
+
+    def __update_min_max(self):
+        value = int((1 + self.overshoot) * self.SLIDER_RESOLUTION)
+        self.setMinimum(-value)
+        self.setMaximum(value)
+
+    def __update_button_positions(self):
         rect = self.rect()
         slider_range = self.maximum() - self.minimum()
         for button, x in self.buttons:
@@ -105,100 +231,14 @@ class Slider(QtWidgets.QSlider):
             button.move(int(pos_1 - button.width() / 2), rect.bottom() - button.height() + 2)
             button.setHidden(False)
 
-    def btn_press_event(self, value) -> None:
-        self.last_value = value * self.SLIDER_RESOLUTION
-        self.setValue(self.last_value)
-        self.is_editing = True
-
-        current_mouse_pos = QtGui.QCursor().pos()
-        self.last_mouse_pos_x = self.mapFromGlobal(current_mouse_pos).x()
-
-    def _update_min_max(self):
-        value = int((1 + self.overshoot) * self.SLIDER_RESOLUTION)
-        self.setMinimum(-value)
-        self.setMaximum(value)
-
-    def handle_rect(self):
+    def get_handle_rect(self) -> QtCore.QRect:
+        """ 
+        Get the QRect of the slider handle
+        """
         opt = QtWidgets.QStyleOptionSlider()
         self.initStyleOption(opt)
         handle_rect = self.style().subControlRect(QtWidgets.QStyle.ComplexControl.CC_Slider, opt, QtWidgets.QStyle.SubControl.SC_SliderHandle, self)
         return handle_rect
-
-    def mousePressEvent(self, event: QtGui.QMouseEvent):
-        self.last_mouse_pos_x = event.pos().x()
-
-        # Right click context menu
-        if event.button() == QtCore.Qt.MouseButton.RightButton:
-            self.show_context_menu_options(event.pos())
-            return
-
-        # Double click handle to edit value with input
-        if event.type() == QtCore.QEvent.Type.MouseButtonDblClick and event.button() == QtCore.Qt.MouseButton.LeftButton:
-            handle_rect = self.handle_rect()
-            if handle_rect.contains(event.pos()):
-                self.show_context_menu_value_input(event.pos())
-            return
-
-        # To allow double clicking the handle without starting editing
-        # `mousePressEvent` will instead be called again from `mouseMoveEvent`
-        handle_rect = self.handle_rect()
-        if not self.__handle_pressed and handle_rect.contains(event.pos()):
-            self.__handle_pressed = True
-            return
-
-        super().mousePressEvent(event)
-
-        self.__beginEditing()
-
-        if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
-            self.snap(event)
-        elif event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
-            if self.blend_from_current_pose:
-                self.set_value_no_signal(0)
-            else:
-                self.setValue(0)
-        else:
-            self.valueChanged.emit(self.value())
-
-        self.last_value = self.value()
-
-    def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
-        self.__endEditing()
-        super().mouseReleaseEvent(e)
-
-    def mouseMoveEvent(self, event: QtGui.QMouseEvent):
-        # If the user clicked the handle, and starts dragging, call mousePressEvent again to start the editing process
-        if self.__handle_pressed and not self.is_editing:
-            self.mousePressEvent(event)
-
-        if self.is_editing and self.last_mouse_pos_x is not None:
-            # Snap if control is pressed
-            if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
-                self.snap(event)
-                self.last_mouse_pos_x = event.pos().x()
-                return
-
-            delta = event.pos().x() - self.last_mouse_pos_x
-
-            # Use more precise delta if shift is pressed
-            if event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
-                delta *= 0.1
-
-            self.last_value = self.last_value + (delta / self.width()) * (self.maximum() - self.minimum())
-            self.setValue(self.last_value)
-            self.editingValueChanged.emit(self.last_value / self.SLIDER_RESOLUTION)
-
-            self.last_mouse_pos_x = event.pos().x()
-
-    def snap(self, event: QtGui.QMouseEvent):
-        value = (self.maximum() - self.minimum()) * event.pos().x() / self.width() + self.minimum()
-        self.last_value = round(value / self.tickInterval()) * self.tickInterval()
-        self.setValue(self.last_value)
-
-    def set_value_no_signal(self, value: int):
-        self.blockSignals(True)
-        self.setValue(value)
-        self.blockSignals(False)
 
     def show_context_menu_options(self, pos: QtCore.QPoint):
         """ 
@@ -239,7 +279,7 @@ class Slider(QtWidgets.QSlider):
         menu.deleteLater()
 
     def show_context_menu_value_input(self, pos: QtCore.QPoint):
-        """ 
+        """
         Show a context menu where the user can input which value to set the slider to
         """
         menu = QtWidgets.QMenu(self)
@@ -268,7 +308,7 @@ class Slider(QtWidgets.QSlider):
         value_input.selectAll()
 
         def __on_value_changed(value: float):
-            self.set_value_no_signal(int(value * self.SLIDER_RESOLUTION))
+            self.__set_value_no_signal(int(value * self.SLIDER_RESOLUTION))
             self.editingValueChanged.emit(value)
 
         value_input.valueChanged.connect(__on_value_changed)
@@ -279,40 +319,6 @@ class Slider(QtWidgets.QSlider):
         menu.deleteLater()
         self.__endEditing()
 
-        self.set_value_no_signal(0)
-
-    def __beginEditing(self):
-        self.is_editing = True
-        self.beginEditing.emit()
-
-    def __endEditing(self):
-        self.is_editing = False
-        self.__handle_pressed = False
-        self.last_mouse_pos_x = None
-        self.last_value = 0
-        self.set_value_no_signal(0)
-        self.endEditing.emit()
-
-    @property
-    def blend_from_current_pose(self) -> bool:
-        return self.__blend_from_current_pose
-
-    @blend_from_current_pose.setter
-    def blend_from_current_pose(self, value):
-        self.__blend_from_current_pose = value
-        self.settings.setValue(self.SETTING_ID_BLEND_CURRENT_POSE, value)
-
-    @property
-    def overshoot(self) -> float:
-        return self._overshoot
-
-    @overshoot.setter
-    def overshoot(self, value: float):
-        self._overshoot = value
-        self.settings.setValue(self.SETTING_ID_OVERSHOOT, value)
-        self._update_min_max()
-        self.update_button_positions()
-
 
 class TRSOption(QtWidgets.QWidget):
     """
@@ -321,6 +327,7 @@ class TRSOption(QtWidgets.QWidget):
 
     def __init__(self, parent: QtWidgets.QWidget, settings: QtCore.QSettings):
         super().__init__(parent)
+
         self.settings = settings
 
         self.setFixedHeight(22)
@@ -337,26 +344,15 @@ class TRSOption(QtWidgets.QWidget):
                                    (self.rotation_btn, True),
                                    (self.scale_btn, False)):
             btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
             btn.setCheckable(True)
-            btn.setChecked(self.settings.value(btn.text(), default_value, type=bool))
+            btn.setChecked(bool(self.settings.value(btn.text(), default_value, type=bool)))
+
+            btn.clicked.connect(self.__on_button_clicked)
+
             layout.addWidget(btn)
 
         self.setLayout(layout)
-
-        self.translation_btn.clicked.connect(self.on_button_clicked)
-        self.rotation_btn.clicked.connect(self.on_button_clicked)
-        self.scale_btn.clicked.connect(self.on_button_clicked)
-
-    def on_button_clicked(self):
-        # If Ctrl is pressed, set the clicked button as the only checked button
-        modifiers = QtGui.QGuiApplication.keyboardModifiers()
-        sender = self.sender()
-        if modifiers == QtCore.Qt.KeyboardModifier.ControlModifier:
-            self.translation_btn.setChecked(sender == self.translation_btn)
-            self.rotation_btn.setChecked(sender == self.rotation_btn)
-            self.scale_btn.setChecked(sender == self.scale_btn)
-
-        self.settings.setValue(sender.text(), sender.isChecked())
 
     @property
     def translation(self) -> bool:
@@ -370,19 +366,25 @@ class TRSOption(QtWidgets.QWidget):
     def scale(self) -> bool:
         return self.scale_btn.isChecked()
 
+    def __on_button_clicked(self):
+        modifiers = QtGui.QGuiApplication.keyboardModifiers()
+        sender = self.sender()
 
-class PoseInbetween(QtWidgets.QWidget):
+        # If Ctrl is held, isolate the clicked button
+        if modifiers == QtCore.Qt.KeyboardModifier.ControlModifier:
+            for btn in (self.translation_btn, self.rotation_btn, self.scale_btn):
+                btn.setChecked(btn == sender)
+                self.settings.setValue(btn.text(), btn.isChecked())
+        else:
+            self.settings.setValue(sender.text(), sender.isChecked())
+
+
+class InBetweenUI(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget, stylesheet: str | None = None):
         super().__init__(parent)
 
         self.undo_manager = fb.FBUndoManager()
         self.settings = QtCore.QSettings("MotionBuilder", "InBetweener")
-
-        if stylesheet is not None:
-            self.setStyleSheet(stylesheet)
-        else:
-            with open(STYLESHEET_FILE, "r") as f:
-                self.setStyleSheet(f.read())
 
         self.editing = False
 
@@ -391,9 +393,7 @@ class PoseInbetween(QtWidgets.QWidget):
         self.prev_pose = None
         self.current_pose = None
 
-        self.init_ui()
-
-    def init_ui(self):
+        # Initialize the UI
         layout = QtWidgets.QHBoxLayout()
         layout.setSpacing(5)
         layout.setContentsMargins(1, 1, 6, 1)
@@ -402,7 +402,7 @@ class PoseInbetween(QtWidgets.QWidget):
 
         self.slider = Slider(self, self.settings)
 
-        self.slider.editingValueChanged.connect(self.editing_value_updated)
+        self.slider.editingValueChanged.connect(self.apply_inbeetween)
         self.slider.beginEditing.connect(self.on_begin_editing)
         self.slider.endEditing.connect(self.on_end_editing)
 
@@ -411,19 +411,36 @@ class PoseInbetween(QtWidgets.QWidget):
 
         self.setLayout(layout)
 
-    def on_begin_editing(self):
-        self.update_stored_poses()
+        if stylesheet is None:
+            with open(STYLESHEET_FILE, "r") as f:
+                stylesheet = f.read()
 
-        self.undo_manager.TransactionBegin("Inbetween Pose")
+        self.setStyleSheet(stylesheet)
+
+    def on_begin_editing(self):
+        """ 
+        Call when user begins editing the slider
+
+        Check for the nearest poses and store them, and open a undo transaction
+        """
+        self.cache_nearest_poses()
+
+        self.undo_manager.TransactionBegin("Inbetween")
         for model in self.models:
             self.undo_manager.TransactionAddModelTRS(model)
 
     def on_end_editing(self):
-        self.slider.set_value_no_signal(0)
+        """
+        Call when user is finished editing the slider
 
+        Ends the undo transaction
+        """
         self.undo_manager.TransactionEnd()
 
-    def editing_value_updated(self, value: int):
+    def apply_inbeetween(self, value: int):
+        """ 
+        Call when the slider value changes
+        """
         ratio = value
 
         if self.slider.blend_from_current_pose:
@@ -455,7 +472,10 @@ class PoseInbetween(QtWidgets.QWidget):
                                                 use_rotation=self.trs_option.rotation,
                                                 use_scaling=self.trs_option.scale)
 
-    def update_stored_poses(self):
+    def cache_nearest_poses(self):
+        """ 
+        Check for the nearest neighboring poses and store them
+        """
         self.models = pose_inbetween.get_models()
 
         self.current_time = fb.FBSystem().LocalTime
@@ -478,21 +498,21 @@ class PoseInbetween(QtWidgets.QWidget):
         pose_inbetween.apply_pose(self.models, self.current_pose)
 
 
-class NativeWidgetHolder(fb.FBWidgetHolder):
+class InBetweenWidgetHolder(fb.FBWidgetHolder):
     def __init__(self, stylesheet: str | None = None):
         super().__init__()
 
         self.stylesheet = stylesheet
 
     def WidgetCreate(self, parent_cpp_ptr: int):
-        self.native_widget = PoseInbetween(wrapInstance(parent_cpp_ptr, QtWidgets.QWidget), self.stylesheet)
+        self.native_widget = InBetweenUI(wrapInstance(parent_cpp_ptr, QtWidgets.QWidget), self.stylesheet)
         return getCppPointer(self.native_widget)[0]
 
 
-class NativeQtWidgetTool(fb.FBTool):
+class InBetweenTool(fb.FBTool):
     def __init__(self, name: str, stylesheet: str | None = None):
         super().__init__(name, True)
-        self.native_holder = NativeWidgetHolder(stylesheet)
+        self.native_holder = InBetweenWidgetHolder(stylesheet)
         self.BuildLayout()
 
         self.MinSizeY = 20
@@ -517,7 +537,7 @@ def show_tool(stylesheet: str | None = None) -> fb.FBTool:
     if TOOL_NAME in fb_additions.FBToolList:
         tool = fb_additions.FBToolList[TOOL_NAME]
     else:
-        tool = NativeQtWidgetTool(TOOL_NAME, stylesheet)
+        tool = InBetweenTool(TOOL_NAME, stylesheet)
 
     return fb.ShowTool(tool)
 
