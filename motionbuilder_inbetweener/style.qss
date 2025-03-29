@@ -24,9 +24,6 @@ QSlider::handle:hover {
     background-color: #5f7f9e;
 }
 
-QSlider::handle:active {
-    background-color: #668CB3;
-}
 
 QPushButton {
     background-color: #5C5C5C;

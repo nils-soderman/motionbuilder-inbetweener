@@ -21,9 +21,13 @@ STYLESHEET_FILE = os.path.join(os.path.dirname(__file__), "style.qss")
 
 
 class Slider(QtWidgets.QSlider):
-    SLIDER_RESOLUTION = 1000
+    SLIDER_RESOLUTION: int = 1000
     SETTING_ID_BLEND_CURRENT_POSE = "BlendCurrentPose"
     SETTING_ID_OVERSHOOT = "Overshoot"
+
+    COLOR_HANDLE_EDITING = "#668CB3"
+    COLOR_HANDLE_OVERSHOOT = "#b38966"
+    COLOR_HANDLE_DEFAULT = "#646464"
 
     beginEditing = QtCore.Signal()
     editingValueChanged = QtCore.Signal(float)
@@ -35,26 +39,24 @@ class Slider(QtWidgets.QSlider):
 
         self.setOrientation(QtCore.Qt.Orientation.Horizontal)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.setTickInterval(250)
+        self.setMinimum(-self.SLIDER_RESOLUTION)
+        self.setMaximum(self.SLIDER_RESOLUTION)
+        self.setTickInterval(int(0.25 * self.SLIDER_RESOLUTION))
+
+        self.__inbetween_value = 0
 
         self.__blend_from_current_pose = bool(self.settings.value(self.SETTING_ID_BLEND_CURRENT_POSE, True, type=bool))
-
-        overshoot_value = self.settings.value(self.SETTING_ID_OVERSHOOT, 0.5, type=float)
-        if isinstance(overshoot_value, float):
-            self.__overshoot = overshoot_value
-        else:
-            self.overshoot = 0.5
+        self.__overshoot_allowed = bool(self.settings.value(self.SETTING_ID_OVERSHOOT, True, type=bool))
 
         self.__last_mouse_pos_x = None
         self.__handle_pressed = False
         self.__is_editing = False
-        self.__last_value = 0
 
         self.buttons: list[tuple[QtWidgets.QPushButton, float]] = []
-        for x in (-1, -0.5, 0.5, 1):
+        for x in (-0.75, -0.5, -0.25, 0.25, 0.5, 0.75):
             button = QtWidgets.QPushButton(self)
 
-            height = 8 if isinstance(x, int) else 6
+            height = 8 if abs(x) == 0.5 else 6
             button.setFixedSize(5, height)
 
             button.setVisible(True)
@@ -65,7 +67,24 @@ class Slider(QtWidgets.QSlider):
 
             self.buttons.append((button, x))
 
-        self.__update_min_max()
+    def inbetween_value(self) -> float:
+        return self.__inbetween_value
+
+    def set_inbetween_value(self, value: float) -> None:
+        """ 
+        Set the value of the slider and emit the valueChanged signal
+        """
+        if abs(value) > 1 and not self.overshoot_allowed:
+            value = -1 if value < 0 else 1
+
+        self.__inbetween_value = value
+
+        self.setValue(int(value * self.SLIDER_RESOLUTION))
+
+        if self.__is_editing:
+            self.editingValueChanged.emit(self.inbetween_value())
+
+        self.__updateHandleStyle()
 
     @property
     def blend_from_current_pose(self) -> bool:
@@ -81,18 +100,16 @@ class Slider(QtWidgets.QSlider):
         self.settings.setValue(self.SETTING_ID_BLEND_CURRENT_POSE, value)
 
     @property
-    def overshoot(self) -> float:
+    def overshoot_allowed(self) -> bool:
         """
         Amount of overshoot to allow when dragging the slider
         """
-        return self.__overshoot
+        return self.__overshoot_allowed
 
-    @overshoot.setter
-    def overshoot(self, value: float):
-        self.__overshoot = value
+    @overshoot_allowed.setter
+    def overshoot_allowed(self, value: bool):
+        self.__overshoot_allowed = value
         self.settings.setValue(self.SETTING_ID_OVERSHOOT, value)
-        self.__update_min_max()
-        self.__update_button_positions()
 
     def paintEvent(self, event: QtGui.QPaintEvent):
         super().paintEvent(event)
@@ -104,14 +121,14 @@ class Slider(QtWidgets.QSlider):
             rect.adjust(10, 0, -10, 0)
 
             painter.setOpacity(0.5)
-            value = self.value()
+            value = self.inbetween_value()
 
             if value > 0:
                 align = QtCore.Qt.AlignmentFlag.AlignLeft
             else:
                 align = QtCore.Qt.AlignmentFlag.AlignRight
 
-            painter.drawText(rect, align, f"{value / self.SLIDER_RESOLUTION:.2f}")
+            painter.drawText(rect, align, f"{value:.2f}")
 
     def resizeEvent(self, event: QtGui.QResizeEvent):
         self.__update_button_positions()
@@ -147,11 +164,9 @@ class Slider(QtWidgets.QSlider):
             if self.blend_from_current_pose:
                 self.__set_value_no_signal(0)
             else:
-                self.setValue(0)
+                self.set_inbetween_value(0)
         else:
-            self.valueChanged.emit(self.value())
-
-        self.__last_value = self.value()
+            self.set_inbetween_value(self.value() / self.SLIDER_RESOLUTION)
 
     def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
         self.__endEditing()
@@ -175,60 +190,57 @@ class Slider(QtWidgets.QSlider):
             if event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
                 delta *= 0.1
 
-            self.__last_value = self.__last_value + (delta / self.width()) * (self.maximum() - self.minimum())
-            self.setValue(self.__last_value)
-            self.editingValueChanged.emit(self.__last_value / self.SLIDER_RESOLUTION)
+            self.__inbetween_value = self.__inbetween_value + (delta / self.width()) * 2
+            self.set_inbetween_value(self.__inbetween_value)
 
             self.__last_mouse_pos_x = event.pos().x()
 
     def __btn_press_event(self, value: float) -> None:
-        self.__last_value = value * self.SLIDER_RESOLUTION
-        self.setValue(self.__last_value)
         self.__is_editing = True
+        self.set_inbetween_value(value)
 
-        current_mouse_pos = QtGui.QCursor().pos()
-        self.__last_mouse_pos_x = self.mapFromGlobal(current_mouse_pos).x()
+        self.__last_mouse_pos_x = self.mapFromGlobal(QtGui.QCursor().pos()).x()
+
+    def __updateHandleStyle(self) -> None:
+        if not self.__is_editing:
+            self.setStyleSheet(self.parent().styleSheet())
+        elif abs(self.inbetween_value()) > 1:
+            width = max(9 - (abs(self.inbetween_value()) - 1) * 3, 5)
+            self.setStyleSheet(f"QSlider::handle {{ background: {self.COLOR_HANDLE_OVERSHOOT}; width: {width}px; }}")
+        else:
+            self.setStyleSheet(f"QSlider::handle {{ background: {self.COLOR_HANDLE_EDITING}; }}")
 
     def __snap(self, event: QtGui.QMouseEvent):
-        value = (self.maximum() - self.minimum()) * event.pos().x() / self.width() + self.minimum()
-        self.__last_value = round(value / self.tickInterval()) * self.tickInterval()
-        self.setValue(self.__last_value)
+        target_value = (self.maximum() - self.minimum()) * event.pos().x() / self.width() + self.minimum()
+        snapped_value = round(target_value / self.tickInterval()) * self.tickInterval()
+        self.set_inbetween_value(snapped_value / self.SLIDER_RESOLUTION)
 
     def __beginEditing(self):
         self.__is_editing = True
         self.beginEditing.emit()
 
+        self.__updateHandleStyle()
+
     def __endEditing(self):
         self.__is_editing = False
         self.__handle_pressed = False
         self.__last_mouse_pos_x = None
-        self.__last_value = 0
         self.__set_value_no_signal(0)
+        self.__updateHandleStyle()
         self.endEditing.emit()
 
     def __set_value_no_signal(self, value: int):
         self.blockSignals(True)
-        self.setValue(value)
+        self.set_inbetween_value(value)
         self.blockSignals(False)
-
-    def __update_min_max(self):
-        value = int((1 + self.overshoot) * self.SLIDER_RESOLUTION)
-        self.setMinimum(-value)
-        self.setMaximum(value)
 
     def __update_button_positions(self):
         rect = self.rect()
-        slider_range = self.maximum() - self.minimum()
         for button, x in self.buttons:
-            # Check if button is within slider range
-            if x * self.SLIDER_RESOLUTION <= self.minimum() or x * self.SLIDER_RESOLUTION >= self.maximum():
-                button.setHidden(True)
-                continue
+            button_center_x = (x + 1) * rect.width() / 2
+            button_center_x -= x * 4
 
-            pos_1 = (x * self.SLIDER_RESOLUTION - self.minimum()) * rect.width() / slider_range
-            pos_1 -= (x * self.SLIDER_RESOLUTION / self.maximum()) * 4
-
-            button.move(int(pos_1 - button.width() / 2), rect.bottom() - button.height() + 2)
+            button.move(int(button_center_x - button.width() / 2), rect.bottom() - button.height() + 2)
             button.setHidden(False)
 
     def get_handle_rect(self) -> QtCore.QRect:
@@ -253,27 +265,11 @@ class Slider(QtWidgets.QSlider):
         menu.addAction(action_blend_current)
 
         # Overshoot float input
-        overshoot_label = QtWidgets.QLabel("Overshoot:")
-        overshoot_input = QtWidgets.QDoubleSpinBox()
-        overshoot_input.setValue(self.overshoot)
-        overshoot_input.setSingleStep(0.1)
-        overshoot_input.setMaximum(10)
-        overshoot_input.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        overshoot_input.setFixedWidth(50)
-        overshoot_input.editingFinished.connect(lambda: (setattr(self, "overshoot", overshoot_input.value()), menu.close()))
-
-        overshoot_layout = QtWidgets.QHBoxLayout()
-        overshoot_layout.setSpacing(0)
-        overshoot_layout.setContentsMargins(6, 1, 0, 0)
-        overshoot_layout.addWidget(overshoot_label)
-        overshoot_layout.addWidget(overshoot_input)
-
-        overshoot_widget = QtWidgets.QWidget()
-        overshoot_widget.setLayout(overshoot_layout)
-
-        overshoot_action = QtWidgets.QWidgetAction(self)
-        overshoot_action.setDefaultWidget(overshoot_widget)
-        menu.addAction(overshoot_action)
+        action_overshoot = QtGui.QAction("Allow Overshoot", self)
+        action_overshoot.setCheckable(True)
+        action_overshoot.setChecked(self.overshoot_allowed)
+        action_overshoot.triggered.connect(lambda checked: setattr(self, "overshoot_allowed", checked))
+        menu.addAction(action_overshoot)
 
         menu.exec_(self.mapToGlobal(pos))
         menu.deleteLater()
@@ -307,11 +303,7 @@ class Slider(QtWidgets.QSlider):
         value_input.setFocus()
         value_input.selectAll()
 
-        def __on_value_changed(value: float):
-            self.__set_value_no_signal(int(value * self.SLIDER_RESOLUTION))
-            self.editingValueChanged.emit(value)
-
-        value_input.valueChanged.connect(__on_value_changed)
+        value_input.valueChanged.connect(self.set_inbetween_value)
         value_input.editingFinished.connect(menu.close)
 
         self.__beginEditing()
