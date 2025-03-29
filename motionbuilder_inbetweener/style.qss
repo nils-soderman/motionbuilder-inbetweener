@@ -16,8 +16,7 @@ QSlider::handle {
     width: 9px;
     max-width: 15px;
     max-height: 15px;
-    /* margin: -2px 0; handle is placed by default on the groove border, so we need to move it a bit */
-    border-radius: 2px; /* Make it round */
+    border-radius: 2px;
 }
 
 QSlider::handle:hover {
@@ -40,11 +39,6 @@ QPushButton:hover {
 
 QPushButton:checked {
     background-color: #343434;
-    /* border-right: 1px solid #424242;
-    border-bottom: 1px solid #424242; */
-    
-    /* border-top: 1px solid #1e1e1e;
-    border-left: 1px solid #1e1e1e; */
 }
 
 QPushButton:checked:hover {
