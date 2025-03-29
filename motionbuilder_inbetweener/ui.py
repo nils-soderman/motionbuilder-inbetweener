@@ -20,6 +20,16 @@ TOOL_NAME = "In-betweener"
 STYLESHEET_FILE = os.path.join(os.path.dirname(__file__), "style.qss")
 
 
+class DotDoubleSpinbox(QtWidgets.QDoubleSpinBox):
+    """
+    QDoubleSpinBox that accepts dots (.) as commas (,) for decimal separator
+    """
+
+    def validate(self, text: str, pos: int):
+        text = text.replace(".", ",")
+        return super().validate(text, pos)
+
+
 class Slider(QtWidgets.QSlider):
     SLIDER_RESOLUTION: int = 1000
     SETTING_ID_BLEND_CURRENT_POSE = "BlendCurrentPose"
@@ -70,11 +80,12 @@ class Slider(QtWidgets.QSlider):
     def inbetween_value(self) -> float:
         return self.__inbetween_value
 
-    def set_inbetween_value(self, value: float) -> None:
+    def set_inbetween_value(self, value: float, disable_clamp=False) -> None:
         """ 
         Set the value of the slider and emit the valueChanged signal
         """
-        if abs(value) > 1 and not self.overshoot_allowed:
+
+        if not disable_clamp and abs(value) > 1 and not self.overshoot_allowed:
             value = -1 if value < 0 else 1
 
         self.__inbetween_value = value
@@ -265,7 +276,7 @@ class Slider(QtWidgets.QSlider):
         menu.addAction(action_blend_current)
 
         # Overshoot float input
-        action_overshoot = QtGui.QAction("Allow Overshoot", self)
+        action_overshoot = QtGui.QAction("Allow overshoot", self)
         action_overshoot.setCheckable(True)
         action_overshoot.setChecked(self.overshoot_allowed)
         action_overshoot.triggered.connect(lambda checked: setattr(self, "overshoot_allowed", checked))
@@ -280,7 +291,7 @@ class Slider(QtWidgets.QSlider):
         """
         menu = QtWidgets.QMenu(self)
 
-        value_input = QtWidgets.QDoubleSpinBox()
+        value_input = DotDoubleSpinbox()
         value_input.setMinimum(-float("inf"))
         value_input.setMaximum(float("inf"))
         value_input.setSingleStep(0.1)
@@ -303,7 +314,7 @@ class Slider(QtWidgets.QSlider):
         value_input.setFocus()
         value_input.selectAll()
 
-        value_input.valueChanged.connect(self.set_inbetween_value)
+        value_input.valueChanged.connect(lambda value: self.set_inbetween_value(value, disable_clamp=True))
         value_input.editingFinished.connect(menu.close)
 
         self.__beginEditing()
