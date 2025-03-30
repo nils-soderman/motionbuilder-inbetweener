@@ -1,7 +1,7 @@
 # MotionBuilder In-Betweener
-Tool for Autodesk MotionBuilder to help create inbetween keyframes on the selected object(s)/character
+Tool for Autodesk MotionBuilder to help create inbetween keyframes on the selected objects/character
 
-![demo of tweening between 2 poses](media/demo.webp)
+![demo of tweening between 2 poses](media/demo.webp)  
 *Rig: [Paragon: Wukong](https://www.fab.com/listings/27054d0c-c26e-4fe3-b6f9-fa778dfcb8b6)*
 
 ## Features
@@ -39,4 +39,4 @@ motionbuilder_inbetweener.show_tool()
 
 
 ## Issues
-If you have any questions, suggestions or run into any issues, please [open an issue](https://github.com/nils-soderman/motionbuilder-inbetweener "GitHub issues") on the GitHub repository
+If you have any questions, suggestions or run into any issues, please [open an issue](https://github.com/nils-soderman/motionbuilder-inbetweener/issues "GitHub issues") on the GitHub repository
