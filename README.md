@@ -14,11 +14,11 @@ The tool takes your Keying Mode into consideration, e.g. Body Part only affects 
 ## Options
 Use the buttons T = Translation, R = Rotation, S = Scale, to toggle what the inbetween should affect
 
-Right click anywhere on the slider to bring up a context menu with additional options
+Right click anywhere on the slider to bring up a context menu with additional options:
 
 ### Blend from current pose
-On: Blends from the current pose to the neighboring keys  
-Off: Will create the absolute inbetween between the previous and next keyframe
+On: Blends from the current pose to the neighboring keyframes  
+Off: Creates the absolute inbetween between the previous and next keyframe
 
 ### Allow overshoot
 If checked you can overshoot the pose by dragging the slider beyond it's max values
