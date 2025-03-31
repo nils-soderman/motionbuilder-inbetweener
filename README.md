@@ -6,7 +6,7 @@ Tool for Autodesk MotionBuilder to help create inbetween keyframes on the select
 
 ## Features
 * Hold down <kbd>ctrl</kbd> to snap between 0.25, 0.5, 0.75 etc.
-* Hold down <kbd>shift</kbd> for more granual control
+* Hold down <kbd>shift</kbd> for more granular control
 * Double click the slider handle to manually type in a value
 
 The tool takes your Keying Mode into consideration, e.g. Body Part only affects the active body part(s).
@@ -21,16 +21,16 @@ On: Blends from the current pose to the neighboring keyframes
 Off: Creates the absolute inbetween between the previous and next keyframe
 
 ### Allow overshoot
-If checked you can overshoot the pose by dragging the slider beyond it's max values
+If checked you can overshoot the pose by dragging the slider beyond its maximum values
 
 
 ## Installation & Usage
 
 ### User Installation
 
-1. [Download](https://github.com/nils-soderman/motionbuilder-inbetweener/releases/latest) the source code for the latest release
+1. Download the source code for the [latest release](https://github.com/nils-soderman/motionbuilder-inbetweener/releases/latest) 
 2. Unzip it
-3. Drag and drop the *manual_installation/drag_n_drop_installer.py* into MotionBuilder's viewport and select *Execute*
+3. Drag and drop the *manual_installation/drag_n_drop_installer.py* onto MotionBuilder's viewport and select *Execute*
 4. You can now find the Inbetweener tool under the Animation menu at the top
 
 ### Pipeline integration
