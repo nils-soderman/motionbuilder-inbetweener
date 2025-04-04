@@ -535,15 +535,15 @@ class InBetweenTool(fb.FBTool):
 
 
 def show_tool(stylesheet: str | None = None) -> fb.FBTool:
-    fb_additions.FBDestroyToolByName(TOOL_NAME)
-
     if TOOL_NAME in fb_additions.FBToolList:
         tool = fb_additions.FBToolList[TOOL_NAME]
     else:
         tool = InBetweenTool(TOOL_NAME, stylesheet)
+        fb_additions.FBAddTool(tool)
 
     return fb.ShowTool(tool)
 
 
 if __name__ == "__main__" or "builtin" in __name__:
+    fb_additions.FBDestroyToolByName(TOOL_NAME)
     show_tool()
