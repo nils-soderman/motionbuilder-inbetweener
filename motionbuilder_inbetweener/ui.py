@@ -481,7 +481,6 @@ class InBetweenUI(QtWidgets.QWidget):
         """
         self.models = pose_inbetween.get_models()
 
-        self.current_time = fb.FBSystem().LocalTime
         self.prev_pose_time, self.next_pose_time = pose_inbetween.get_closest_keyframes(
             self.models,
             self.trs_option.translation,
