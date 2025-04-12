@@ -13,3 +13,4 @@ repository = "https://github.com/nils-soderman/motionbuilder-inbetweener"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["motionbuilder_inbetweener*"]
