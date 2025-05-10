@@ -17,11 +17,8 @@ class InBetweenerWidgetHolder(fb.FBWidgetHolder):
         self.stylesheet = stylesheet
 
     def WidgetCreate(self, parent_cpp_ptr: int):
-        import importlib
-        import motionbuilder_inbetweener.ui
-        importlib.reload(motionbuilder_inbetweener.ui)
         from motionbuilder_inbetweener.ui import InBetweenUI
-        self.native_widget = InBetweenUI(wrapInstance(parent_cpp_ptr, QtWidgets.QWidget), self.stylesheet)
+        self.native_widget = InBetweenUI(wrapInstance(parent_cpp_ptr, QtWidgets.QWidget), InBetweenerTool.TOOL_NAME, self.stylesheet)
         return getCppPointer(self.native_widget)[0]
 
 
@@ -59,5 +56,5 @@ def show_tool(stylesheet: str | None = None) -> fb.FBTool:
 
 
 if __name__ == "__main__" or "builtin" in __name__:
-    # fb_add.FBDestroyToolByName(InBetweenTool.TOOL_NAME)
+    fb_add.FBDestroyToolByName(InBetweenerTool.TOOL_NAME)
     show_tool()

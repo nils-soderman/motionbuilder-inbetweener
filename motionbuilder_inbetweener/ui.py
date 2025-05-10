@@ -379,10 +379,10 @@ class TRSOption(QtWidgets.QWidget):
 
 
 class InBetweenUI(QtWidgets.QWidget):
-    def __init__(self, parent: QtWidgets.QWidget, tool: fb.FBTool, stylesheet: str | None = None):
+    def __init__(self, parent: QtWidgets.QWidget, tool_name: str, stylesheet: str | None = None):
         super().__init__(parent)
 
-        self.tool = tool
+        self.tool_name = tool_name
 
         self.undo_manager = fb.FBUndoManager()
         self.settings = QtCore.QSettings("MotionBuilder", "InBetweener")
@@ -423,7 +423,7 @@ class InBetweenUI(QtWidgets.QWidget):
             DockWidget.destroyed.connect(self.__on_dock_widget_destroyed)
 
     def __on_dock_widget_destroyed(self):
-        fb_add.FBDestroyTool(self.tool)
+        fb_add.FBDestroyToolByName(self.tool_name)
 
     def on_begin_editing(self):
         """ 
