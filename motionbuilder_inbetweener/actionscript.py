@@ -1,9 +1,9 @@
 try:
     from PySide6 import QtWidgets, QtCore, QtGui
-    from shiboken6 import wrapInstance, getCppPointer
+    from shiboken6 import wrapInstance
 except ModuleNotFoundError:
     from PySide2 import QtWidgets, QtCore, QtGui
-    from shiboken2 import wrapInstance, getCppPointer
+    from shiboken2 import wrapInstance
 
 import pyfbsdk as fb
 
@@ -31,8 +31,15 @@ def get_main_window() -> QtWidgets.QMainWindow:
 
 
 class InbetweenerOverlay(QtWidgets.QWidget):
-    def __init__(self, parent: QtWidgets.QWidget, models: set[fb.FBModel], fullbody: set[fb.FBModel]):
+    def __init__(self,
+                 parent: QtWidgets.QWidget,
+                 models: set[fb.FBModel],
+                 fullbody: set[fb.FBModel],
+                 toggle_translation_key: QtCore.Qt.Key = QtCore.Qt.Key.Key_W,
+                 toggle_rotation_key: QtCore.Qt.Key = QtCore.Qt.Key.Key_E,
+                 toggle_scale_key: QtCore.Qt.Key = QtCore.Qt.Key.Key_R):
         super().__init__(parent)
+
         self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.Window | QtCore.Qt.WindowType.Tool)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
@@ -48,6 +55,10 @@ class InbetweenerOverlay(QtWidgets.QWidget):
         self.models = models
         self.fullbody = fullbody
         self.value = 0.0
+
+        self.toggle_translation_key = toggle_translation_key
+        self.toggle_rotation_key = toggle_rotation_key
+        self.toggle_scale_key = toggle_scale_key
 
         self.setGeometry(parent.geometry())
         self.setFixedSize(parent.geometry().size())
@@ -142,13 +153,13 @@ class InbetweenerOverlay(QtWidgets.QWidget):
     def keyPressEvent(self, event: QtGui.QKeyEvent):
         if event.key() == QtCore.Qt.Key.Key_Escape:
             self.cancel()
-        elif event.key() == QtCore.Qt.Key.Key_W:
+        elif event.key() == self.toggle_translation_key:
             self.translation = not self.translation
             event.accept()
-        elif event.key() == QtCore.Qt.Key.Key_E:
+        elif event.key() == self.toggle_rotation_key:
             self.rotation = not self.rotation
             event.accept()
-        elif event.key() == QtCore.Qt.Key.Key_R:
+        elif event.key() == self.toggle_scale_key:
             self.scale = not self.scale
             event.accept()
         else:
@@ -273,13 +284,22 @@ class InbetweenerOverlay(QtWidgets.QWidget):
                                                 use_scaling=self.scale)
 
 
-def main():
+def activate(
+    toggle_translation_key=QtCore.Qt.Key.Key_W,
+    toggle_rotation_key=QtCore.Qt.Key.Key_E,
+    toggle_scale_key=QtCore.Qt.Key.Key_R
+):
     models, fullbody = pose_inbetween.get_models()
     if not models:
         return
 
-    InbetweenerOverlay(get_main_window(), models, fullbody)
+    InbetweenerOverlay(get_main_window(), 
+                       models, 
+                       fullbody,
+                       toggle_translation_key=toggle_translation_key,
+                       toggle_rotation_key=toggle_rotation_key,
+                       toggle_scale_key=toggle_scale_key)
 
 
 if __name__ == "__main__" or "builtin" in __name__:
-    main()
+    activate()
