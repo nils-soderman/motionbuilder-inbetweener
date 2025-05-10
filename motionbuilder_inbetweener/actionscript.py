@@ -289,7 +289,7 @@ def activate(
     toggle_rotation_key=QtCore.Qt.Key.Key_E,
     toggle_scale_key=QtCore.Qt.Key.Key_R
 ):
-    models, fullbody = pose_inbetween.get_models()
+    models, fullbody = pose_inbetween.get_active_keying_group_models()
     if not models:
         return
 

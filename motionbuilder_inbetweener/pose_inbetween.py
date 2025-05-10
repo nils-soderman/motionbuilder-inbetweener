@@ -60,12 +60,17 @@ def lerp(a: VectorT, b: VectorT, t: float, /) -> VectorT:
     return a + (b - a) * t
 
 
-def get_models() -> tuple[set[fb.FBModel], set[fb.FBModel]]:
+def get_active_keying_group_models() -> tuple[set[fb.FBModel], set[fb.FBModel]]:
     """
-    Get selected models depending on which keying mode is active:
+    Get the models for the currently active keying group(s):
         - `kFBCharacterKeyingSelection` - this will return the selected models
         - `kFBCharacterKeyingBodyPart` - this will return the models that are part of the selected body part
         - `kFBCharacterKeyingFullBody` - this will return all models that are part of the selected body part and all its children
+
+    ### Returns:
+        A tuple where:
+           [0] - The active models
+           [1] - All models that are part of the fullbody
     """
     selected_models = fb.FBModelList()
     fb.FBGetSelectedModels(selected_models)
