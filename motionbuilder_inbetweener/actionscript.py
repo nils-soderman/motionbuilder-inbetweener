@@ -31,7 +31,7 @@ def get_main_window() -> QtWidgets.QMainWindow:
 
 
 class InbetweenerOverlay(QtWidgets.QWidget):
-    def __init__(self, parent: QtWidgets.QWidget, models: set[fb.FBModel]):
+    def __init__(self, parent: QtWidgets.QWidget, models: set[fb.FBModel], fullbody: set[fb.FBModel]):
         super().__init__(parent)
         self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.Window | QtCore.Qt.WindowType.Tool)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
@@ -41,8 +41,12 @@ class InbetweenerOverlay(QtWidgets.QWidget):
         self.settings = QtCore.QSettings("MotionBuilder", "InBetweenerActionScript")
         self.undo_manager = fb.FBUndoManager()
 
+        self.prev_pose_time = None
+        self.next_pose_time = None
+
         self.blend_from_current_pose = True
         self.models = models
+        self.fullbody = fullbody
         self.value = 0.0
 
         self.setGeometry(parent.geometry())
@@ -81,6 +85,8 @@ class InbetweenerOverlay(QtWidgets.QWidget):
 
         mouse_pos = self.mapFromGlobal(QtGui.QCursor.pos())
         self.display_widget.setGeometry(mouse_pos.x() - 20, mouse_pos.y() - 20, 200, 50)
+
+        self.current_pose = pose_inbetween.get_pose(self.fullbody)
 
         self.start_editing()
         self.show()
@@ -127,7 +133,7 @@ class InbetweenerOverlay(QtWidgets.QWidget):
         if event.type() is QtCore.QEvent.Type.MouseMove:
             self.mouseMoveEvent(event)
             return True
-        elif event.type() is QtCore.QEvent.Type.KeyPress:
+        if event.type() is QtCore.QEvent.Type.KeyPress:
             self.keyPressEvent(event)
             return True
 
@@ -182,6 +188,7 @@ class InbetweenerOverlay(QtWidgets.QWidget):
         return super().close()
 
     def cancel(self):
+        pose_inbetween.apply_pose(self.models, self.current_pose)
         self.close()
 
     def start_editing(self):
@@ -207,30 +214,31 @@ class InbetweenerOverlay(QtWidgets.QWidget):
         self.value_label.setStyleSheet(f"color: {color};")
 
     def on_trs_changed(self):
-        pose_inbetween.apply_pose(self.models, self.current_pose)
+        self.cache_nearest_poses()
         self.apply_inbetween(self.value)
 
     def cache_nearest_poses(self):
         """ 
         Check for the nearest neighboring poses and store them
         """
-        prev_pose_time, next_pose_time = pose_inbetween.get_closest_keyframes(
+        new_prev_pose_time, new_next_pose_time = pose_inbetween.find_nearest_keyframes(
             self.models,
             self.translation,
             self.rotation,
             self.scale
         )
 
-        fb.FBSystem().Scene.Evaluate()
-        self.current_pose = pose_inbetween.get_pose(self.models)
+        if new_prev_pose_time != self.prev_pose_time or new_next_pose_time != self.next_pose_time:
+            self.prev_pose_time = new_prev_pose_time
+            self.next_pose_time = new_next_pose_time
 
-        with pose_inbetween.set_time_ctx(prev_pose_time, eval=True):
-            self.prev_pose = pose_inbetween.get_pose(self.models)
+            with pose_inbetween.set_time_ctx(self.prev_pose_time, eval=True):
+                self.prev_pose = pose_inbetween.get_pose(self.models)
 
-        with pose_inbetween.set_time_ctx(next_pose_time, eval=True):
-            self.next_pose = pose_inbetween.get_pose(self.models)
+            with pose_inbetween.set_time_ctx(self.next_pose_time, eval=True):
+                self.next_pose = pose_inbetween.get_pose(self.models)
 
-        pose_inbetween.apply_pose(self.models, self.current_pose)
+        pose_inbetween.apply_pose(self.fullbody, self.current_pose)
 
     def apply_inbetween(self, value: float):
         ratio = value
@@ -266,11 +274,11 @@ class InbetweenerOverlay(QtWidgets.QWidget):
 
 
 def main():
-    models = pose_inbetween.get_models()
+    models, fullbody = pose_inbetween.get_models()
     if not models:
         return
 
-    InbetweenerOverlay(get_main_window(), models)
+    InbetweenerOverlay(get_main_window(), models, fullbody)
 
 
 if __name__ == "__main__" or "builtin" in __name__:

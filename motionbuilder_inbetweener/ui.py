@@ -484,17 +484,16 @@ class InBetweenUI(QtWidgets.QWidget):
         """ 
         Check for the nearest neighboring poses and store them
         """
-        self.models = pose_inbetween.get_models()
+        self.models, fullbody = pose_inbetween.get_models()
 
-        self.prev_pose_time, self.next_pose_time = pose_inbetween.get_closest_keyframes(
+        self.prev_pose_time, self.next_pose_time = pose_inbetween.find_nearest_keyframes(
             self.models,
             self.trs_option.translation,
             self.trs_option.rotation,
             self.trs_option.scale
         )
 
-        fb.FBSystem().Scene.Evaluate()
-        self.current_pose = pose_inbetween.get_pose(self.models)
+        self.current_pose = pose_inbetween.get_pose(fullbody)
 
         with pose_inbetween.set_time_ctx(self.prev_pose_time, eval=True):
             self.prev_pose = pose_inbetween.get_pose(self.models)
@@ -502,4 +501,4 @@ class InBetweenUI(QtWidgets.QWidget):
         with pose_inbetween.set_time_ctx(self.next_pose_time, eval=True):
             self.next_pose = pose_inbetween.get_pose(self.models)
 
-        pose_inbetween.apply_pose(self.models, self.current_pose)
+        pose_inbetween.apply_pose(fullbody, self.current_pose)

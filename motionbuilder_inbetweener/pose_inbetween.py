@@ -60,7 +60,7 @@ def lerp(a: VectorT, b: VectorT, t: float, /) -> VectorT:
     return a + (b - a) * t
 
 
-def get_models() -> set[fb.FBModel]:
+def get_models() -> tuple[set[fb.FBModel], set[fb.FBModel]]:
     """
     Get selected models depending on which keying mode is active:
         - `kFBCharacterKeyingSelection` - this will return the selected models
@@ -71,41 +71,54 @@ def get_models() -> set[fb.FBModel]:
     fb.FBGetSelectedModels(selected_models)
 
     selected_models = set(selected_models)
+    full_body = set(selected_models)
 
     keying_mode = fb.FBGetCharactersKeyingMode()
 
-    if keying_mode != fb.FBCharacterKeyingMode.kFBCharacterKeyingSelection:
-        groups = set()
+    selected_groups = set()
+    full_body_groups = set()
 
-        for keying_group in fb.FBSystem().Scene.KeyingGroups:
-            if keying_group.IsObjectDependencySelected():
-                for i in range(keying_group.GetParentKeyingGroupCount()):
-                    parent_keying_group = keying_group.GetParentKeyingGroup(i)
-                    if keying_mode == fb.FBCharacterKeyingMode.kFBCharacterKeyingBodyPart:
-                        groups.add(parent_keying_group)
-                    else:
-                        for j in range(parent_keying_group.GetParentKeyingGroupCount()):
-                            groups.add(parent_keying_group.GetParentKeyingGroup(j))
+    for keying_group in fb.FBSystem().Scene.KeyingGroups:
+        if keying_group.IsObjectDependencySelected():
+            for i in range(keying_group.GetParentKeyingGroupCount()):
+                parent_keying_group = keying_group.GetParentKeyingGroup(i)
+                if keying_mode == fb.FBCharacterKeyingMode.kFBCharacterKeyingBodyPart:
+                    selected_groups.add(parent_keying_group)
 
-        def _get_models_from_group(keying_group: fb.FBKeyingGroup):
-            for i in range(keying_group.GetSubKeyingGroupCount()):
-                sub_keying_group = keying_group.GetSubKeyingGroup(i)
-                _get_models_from_group(sub_keying_group)
+                for j in range(parent_keying_group.GetParentKeyingGroupCount()):
+                    if keying_mode == fb.FBCharacterKeyingMode.kFBCharacterKeyingFullBody:
+                        selected_groups.add(parent_keying_group.GetParentKeyingGroup(j))
+                    full_body_groups.add(parent_keying_group.GetParentKeyingGroup(j))
 
-            for i in range(keying_group.GetPropertyCount()):
-                prop = keying_group.GetProperty(i)
-                if prop:
-                    model = prop.GetOwner()
-                    if isinstance(model, fb.FBModel):
-                        selected_models.add(model)
+    def _get_models_from_group(keying_group: fb.FBKeyingGroup) -> list[fb.FBModel]:
+        models = []
+        
+        for i in range(keying_group.GetSubKeyingGroupCount()):
+            sub_keying_group = keying_group.GetSubKeyingGroup(i)
+            models.extend(_get_models_from_group(sub_keying_group))
 
-        for group in groups:
-            _get_models_from_group(group)
+        for i in range(keying_group.GetPropertyCount()):
+            prop = keying_group.GetProperty(i)
+            if prop:
+                model = prop.GetOwner()
+                if isinstance(model, fb.FBModel):
+                    models.append(model)
+                    
+        return models
 
-    return selected_models
+    for group in selected_groups:
+        selected_models.update(_get_models_from_group(group))
+
+    if keying_mode in (fb.FBCharacterKeyingMode.kFBCharacterKeyingFullBody, fb.FBCharacterKeyingMode.kFBCharacterKeyingFullBodyNoPull):
+        full_body = selected_models
+    else:
+        for group in full_body_groups:
+            full_body.update(_get_models_from_group(group))
+
+    return selected_models, full_body
 
 
-def get_closest_keyframes(models: typing.Iterable[fb.FBModel], use_translation=True, use_rotation=True, use_scale=True) -> tuple[fb.FBTime, fb.FBTime]:
+def find_nearest_keyframes(models: typing.Iterable[fb.FBModel], use_translation=True, use_rotation=True, use_scale=True) -> tuple[fb.FBTime, fb.FBTime]:
     """
     Iterate over the models translation, rotation and scaling properties to find the closest keyframes to the current time
 
