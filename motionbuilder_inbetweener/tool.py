@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pyfbsdk as fb
 import pyfbsdk_additions as fb_add
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 try:
     from PySide6 import QtWidgets, QtCore, QtGui
     from shiboken6 import wrapInstance
