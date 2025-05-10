@@ -19,7 +19,6 @@ class InBetweenerWidgetHolder(fb.FBWidgetHolder):
         import motionbuilder_inbetweener.ui
         importlib.reload(motionbuilder_inbetweener.ui)
         from motionbuilder_inbetweener.ui import InBetweenUI
-        print(motionbuilder_inbetweener.ui.__file__)
         self.native_widget = InBetweenUI(wrapInstance(parent_cpp_ptr, QtWidgets.QWidget), self.stylesheet)
         return getCppPointer(self.native_widget)[0]
 
