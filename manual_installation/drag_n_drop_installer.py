@@ -66,8 +66,7 @@ def main() -> bool:
     shutil.copytree(source_dir, target_dir)
 
     import register_inbetweener
-    if not register_inbetweener.does_menu_exist():
-        register_inbetweener.main()
+    register_inbetweener.register_inbetweener()
 
     import motionbuilder_inbetweener
     if requires_reload:
@@ -76,7 +75,7 @@ def main() -> bool:
 
     motionbuilder_inbetweener.show_tool()
 
-    fb.FBMessageBox("Setup Complete", f"Inbetweener has been installed successfully.\nThe Inbetweener tool can be found in the {register_inbetweener.PARENT_MENU} menu.", "OK")
+    fb.FBMessageBox("Setup Complete", "Inbetweener has been installed successfully.\nThe Inbetweener tool can be found in the Python Tools menu.", "OK")
     return True
 
 

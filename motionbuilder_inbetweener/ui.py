@@ -5,17 +5,13 @@ from . import pose_inbetween
 import os
 
 import pyfbsdk as fb
-import pyfbsdk_additions as fb_additions
+import pyfbsdk_additions as fb_add
 
 try:
     from PySide6 import QtWidgets, QtCore, QtGui
-    from shiboken6 import wrapInstance, getCppPointer
 except ModuleNotFoundError:
     from PySide2 import QtWidgets, QtCore, QtGui
-    from shiboken2 import wrapInstance, getCppPointer
 
-
-TOOL_NAME = "In-betweener"
 
 STYLESHEET_FILE = os.path.join(os.path.dirname(__file__), "style.qss")
 
@@ -383,8 +379,10 @@ class TRSOption(QtWidgets.QWidget):
 
 
 class InBetweenUI(QtWidgets.QWidget):
-    def __init__(self, parent: QtWidgets.QWidget, stylesheet: str | None = None):
+    def __init__(self, parent: QtWidgets.QWidget, tool: fb.FBTool, stylesheet: str | None = None):
         super().__init__(parent)
+
+        self.tool = tool
 
         self.undo_manager = fb.FBUndoManager()
         self.settings = QtCore.QSettings("MotionBuilder", "InBetweener")
@@ -419,6 +417,13 @@ class InBetweenUI(QtWidgets.QWidget):
                 stylesheet = f.read()
 
         self.setStyleSheet(stylesheet)
+
+        DockWidget = self.parent().parent().parent()
+        if isinstance(DockWidget, QtWidgets.QDockWidget):
+            DockWidget.destroyed.connect(self.__on_dock_widget_destroyed)
+
+    def __on_dock_widget_destroyed(self):
+        fb_add.FBDestroyTool(self.tool)
 
     def on_begin_editing(self):
         """ 
@@ -498,51 +503,3 @@ class InBetweenUI(QtWidgets.QWidget):
             self.next_pose = pose_inbetween.get_pose(self.models)
 
         pose_inbetween.apply_pose(self.models, self.current_pose)
-
-
-class InBetweenWidgetHolder(fb.FBWidgetHolder):
-    def __init__(self, stylesheet: str | None = None):
-        super().__init__()
-
-        self.stylesheet = stylesheet
-
-    def WidgetCreate(self, parent_cpp_ptr: int):
-        self.native_widget = InBetweenUI(wrapInstance(parent_cpp_ptr, QtWidgets.QWidget), self.stylesheet)
-        return getCppPointer(self.native_widget)[0]
-
-
-class InBetweenTool(fb.FBTool):
-    def __init__(self, name: str, stylesheet: str | None = None):
-        super().__init__(name, True)
-        self.native_holder = InBetweenWidgetHolder(stylesheet)
-        self.BuildLayout()
-
-        self.MinSizeY = 20
-
-        self.StartSizeX = 350
-        self.StartSizeY = 60
-
-    def BuildLayout(self):
-        x = fb.FBAddRegionParam(0, fb.FBAttachType.kFBAttachLeft, "")
-        y = fb.FBAddRegionParam(0, fb.FBAttachType.kFBAttachTop, "")
-        w = fb.FBAddRegionParam(0, fb.FBAttachType.kFBAttachRight, "")
-        h = fb.FBAddRegionParam(0, fb.FBAttachType.kFBAttachBottom, "")
-
-        region_name = "main"
-        self.AddRegion(region_name, region_name, x, y, w, h)
-        self.SetControl(region_name, self.native_holder)
-
-
-def show_tool(stylesheet: str | None = None) -> fb.FBTool:
-    if TOOL_NAME in fb_additions.FBToolList:
-        tool = fb_additions.FBToolList[TOOL_NAME]
-    else:
-        tool = InBetweenTool(TOOL_NAME, stylesheet)
-        fb_additions.FBAddTool(tool)
-
-    return fb.ShowTool(tool)
-
-
-if __name__ == "__main__" or "builtin" in __name__:
-    fb_additions.FBDestroyToolByName(TOOL_NAME)
-    show_tool()

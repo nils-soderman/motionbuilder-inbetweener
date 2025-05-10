@@ -31,7 +31,7 @@ If checked you can overshoot the pose by dragging the slider beyond its maximum 
 1. Download the source code for the [latest release](https://github.com/nils-soderman/motionbuilder-inbetweener/releases/latest) 
 2. Unzip it
 3. Drag and drop the *manual_installation/drag_n_drop_installer.py* onto MotionBuilder's viewport and select *Execute*
-4. You can now find the Inbetweener tool under the Animation menu at the top
+4. You can now find the Inbetweener tool under the Python Tools menu at the top
 
 ### Pipeline Integration
 
@@ -44,6 +44,11 @@ Create/show the tool by running:
 ```python
 import motionbuilder_inbetweener
 motionbuilder_inbetweener.show_tool()
+```
+
+Or you can get the `FBTool` reference:
+```python
+from motionbuilder_inbetweener import InBetweenerTool
 ```
 
 
