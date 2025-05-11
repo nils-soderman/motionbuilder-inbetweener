@@ -1,4 +1,4 @@
-import motionbuilder_inbetweener.actionscript as actionscript
+from motionbuilder_inbetweener import actionscript
 
 try:
     from PySide6 import QtCore
