@@ -477,6 +477,8 @@ class InBetweenUI(QtWidgets.QWidget):
         Check for the nearest neighboring poses and store them
         """
         self.models, fullbody = pose_inbetween.get_active_keying_group_models()
+        if not self.models:
+            return
 
         self.prev_pose_time, self.next_pose_time = pose_inbetween.find_nearest_keyframes(
             self.models,
