@@ -8,5 +8,5 @@ except ModuleNotFoundError:
 actionscript.activate(
     toggle_translation_key = QtCore.Qt.Key.Key_W,
     toggle_rotation_key = QtCore.Qt.Key.Key_E,
-    toggle_scale_key = QtCore.Qt.Key.Key_U
+    toggle_scale_key = QtCore.Qt.Key.Key_R
 )
