@@ -489,10 +489,10 @@ class InBetweenUI(QtWidgets.QWidget):
 
         self.current_pose = pose_inbetween.get_pose(fullbody)
 
-        with pose_inbetween.set_time_ctx(self.prev_pose_time, eval=True):
+        with pose_inbetween.SetTimeCtx(self.prev_pose_time, eval=True):
             self.prev_pose = pose_inbetween.get_pose(self.models)
 
-        with pose_inbetween.set_time_ctx(self.next_pose_time, eval=True):
+        with pose_inbetween.SetTimeCtx(self.next_pose_time, eval=True):
             self.next_pose = pose_inbetween.get_pose(self.models)
 
         pose_inbetween.apply_pose(fullbody, self.current_pose)

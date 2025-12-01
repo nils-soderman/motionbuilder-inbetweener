@@ -24,7 +24,7 @@ class ModelTransform:
     scaling: fb.FBVector3d
 
 
-class change_all_models_ctx:
+class ChangeAllModelsCtx:
     """ 
     Context manager for pyfbsdk `FBBeginChangeAllModels` / `FBEndChangeAllModels`
     """
@@ -36,7 +36,7 @@ class change_all_models_ctx:
         fb.FBEndChangeAllModels()
 
 
-class set_time_ctx:
+class SetTimeCtx:
     """
     A context manager that sets the current time to a specified value upon entering the context and restores the original time upon exiting.
     """
@@ -242,7 +242,7 @@ def apply_inbetween_pose(models: typing.Iterable[fb.FBModel],
         - use_rotation: Whether to apply the rotation
         - use_scaling: Whether to apply the scaling
     """
-    with change_all_models_ctx():
+    with ChangeAllModelsCtx():
         for model in models:
             model_trs_prev = pose_a[model]
             model_trs_next = pose_b[model]
@@ -274,7 +274,7 @@ def apply_pose(models: typing.Iterable[fb.FBModel], pose: PoseT) -> None:
     """
     Apply a cached pose to the models
     """
-    with change_all_models_ctx():
+    with ChangeAllModelsCtx():
         for model in models:
             model_trs = pose[model]
 

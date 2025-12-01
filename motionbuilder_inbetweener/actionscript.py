@@ -245,10 +245,10 @@ class InbetweenerOverlay(QtWidgets.QWidget):
             self.prev_pose_time = new_prev_pose_time
             self.next_pose_time = new_next_pose_time
 
-            with pose_inbetween.set_time_ctx(self.prev_pose_time, eval=True):
+            with pose_inbetween.SetTimeCtx(self.prev_pose_time, eval=True):
                 self.prev_pose = pose_inbetween.get_pose(self.models)
 
-            with pose_inbetween.set_time_ctx(self.next_pose_time, eval=True):
+            with pose_inbetween.SetTimeCtx(self.next_pose_time, eval=True):
                 self.next_pose = pose_inbetween.get_pose(self.models)
 
         pose_inbetween.apply_pose(self.fullbody, self.current_pose)
