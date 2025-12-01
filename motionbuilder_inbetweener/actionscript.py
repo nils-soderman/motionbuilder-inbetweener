@@ -27,6 +27,8 @@ QLabel:disabled {
 }
 """
 
+CTRL_SNAP_INCREMENT = 0.1
+
 
 def get_main_window() -> QtWidgets.QMainWindow:
     return wrapInstance(fb.FBGetMainWindow(), QtWidgets.QMainWindow)
@@ -57,6 +59,7 @@ class InbetweenerOverlay(QtWidgets.QWidget):
         self.models = models
         self.fullbody = fullbody
         self.value = 0.0
+        self._value_accumulator = 0.0
 
         self.toggle_translation_key = toggle_translation_key
         self.toggle_rotation_key = toggle_rotation_key
@@ -179,14 +182,21 @@ class InbetweenerOverlay(QtWidgets.QWidget):
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent):
         mouse_pos = event.pos()
+        modifiers = event.modifiers()
 
-        delta = (mouse_pos.x() - self.__mouse_pos)
+        delta = (mouse_pos.x() - self.__mouse_pos) / 150
         self.__mouse_pos = mouse_pos.x()
 
-        if event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
+        if modifiers & QtCore.Qt.KeyboardModifier.ShiftModifier:
             delta *= 0.1
 
-        self.update_value(self.value + (delta / 150))
+        self._value_accumulator += delta
+
+        if modifiers & QtCore.Qt.KeyboardModifier.ControlModifier:
+            snapped_value = round(self._value_accumulator / CTRL_SNAP_INCREMENT) * CTRL_SNAP_INCREMENT
+            self.update_value(snapped_value)
+        else:
+            self.update_value(self._value_accumulator)
 
         event.accept()
 
@@ -210,6 +220,7 @@ class InbetweenerOverlay(QtWidgets.QWidget):
         self.cache_nearest_poses()
         self.__mouse_pos = self.mapFromGlobal(QtGui.QCursor.pos()).x()
         self.value = 0.0
+        self._value_accumulator = 0.0
 
         self.undo_manager.TransactionBegin("Inbetween")
         for model in self.models:
