@@ -83,8 +83,10 @@ class InbetweenerOverlay(QtWidgets.QWidget):
         self.label_translation = QtWidgets.QLabel("T", self.display_widget)
         self.label_rotation = QtWidgets.QLabel("R", self.display_widget)
         self.label_scale = QtWidgets.QLabel("S", self.display_widget)
-        for label in (self.label_translation, self.label_rotation, self.label_scale):
-            label.setEnabled(bool(self.settings.value(label.text(), True, type=bool)))
+        for label, default in ((self.label_translation, True),
+                               (self.label_rotation, True),
+                               (self.label_scale, False)):
+            label.setEnabled(bool(self.settings.value(label.text(), default, type=bool)))
             label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             label.setFixedSize(10, 20)
             display_layout.addWidget(label)
@@ -295,8 +297,8 @@ def activate(
     if not models:
         return
 
-    InbetweenerOverlay(get_main_window(), 
-                       models, 
+    InbetweenerOverlay(get_main_window(),
+                       models,
                        fullbody,
                        toggle_translation_key=toggle_translation_key,
                        toggle_rotation_key=toggle_rotation_key,
