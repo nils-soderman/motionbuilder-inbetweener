@@ -47,7 +47,7 @@ class Slider(QtWidgets.QSlider):
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.setMinimum(-self.SLIDER_RESOLUTION)
         self.setMaximum(self.SLIDER_RESOLUTION)
-        self.setTickInterval(int(0.25 * self.SLIDER_RESOLUTION))
+        self.setTickInterval(int(0.1 * self.SLIDER_RESOLUTION))
 
         self.__inbetween_value = 0
 
