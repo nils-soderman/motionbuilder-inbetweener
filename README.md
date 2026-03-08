@@ -1,4 +1,4 @@
-# ⚠️ This repository has moved to CodeBerg
+# ⚠️ This repository has moved to Codeberg
 
 **This project is now maintained at: https://codeberg.org/nils-soderman/motionbuilder-inbetweener**
 
