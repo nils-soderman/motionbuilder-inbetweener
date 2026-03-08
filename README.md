@@ -1,3 +1,10 @@
+# ⚠️ This repository has moved to CodeBerg
+
+**This project is now maintained at: https://codeberg.org/nils-soderman/motionbuilder-inbetweener**
+
+This GitHub repository is now archived and will no longer receive updates.
+
+
 # MotionBuilder In-Betweener
 Tool for Autodesk MotionBuilder to help create inbetween keyframes on the selected objects/character
 
@@ -29,7 +36,7 @@ If checked you can overshoot the pose by dragging the slider beyond its maximum 
 
 ### User Installation
 
-1. Download the source code for the [latest release](https://github.com/nils-soderman/motionbuilder-inbetweener/releases/latest) 
+1. Download the source code for the [latest release](https://codeberg.org/nils-soderman/motionbuilder-inbetweener/releases/tag/1.1.0) 
 2. Unzip it
 3. Drag and drop the *manual_installation/drag_n_drop_installer.py* onto MotionBuilder's viewport and select *Execute*
 4. You can now find the Inbetweener tool under the Python Tools menu
@@ -39,7 +46,7 @@ If checked you can overshoot the pose by dragging the slider beyond its maximum 
 
 Installation using pip:
 ```
-pip install git+https://github.com/nils-soderman/motionbuilder-inbetweener
+pip install git+https://codeberg.org/nils-soderman/motionbuilder-inbetweener
 ```
 
 Create/show the tool by running:
@@ -55,6 +62,6 @@ from motionbuilder_inbetweener import InBetweenerTool
 
 
 ## Issues
-If you have any questions, suggestions or run into any issues, please [open an issue](https://github.com/nils-soderman/motionbuilder-inbetweener/issues "GitHub issues") on the GitHub repository
+If you have any questions, suggestions or run into any issues, please [open an issue](https://codeberg.org/nils-soderman/motionbuilder-inbetweener/issues "issues") on the git repository
 
 Contributions are welcomed!

@@ -9,7 +9,7 @@ authors = [
 ]
 
 [project.urls]
-repository = "https://github.com/nils-soderman/motionbuilder-inbetweener"
+repository = "https://codeberg.org/nils-soderman/motionbuilder-inbetweener"
 
 [tool.setuptools.packages.find]
 where = ["."]
